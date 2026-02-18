@@ -24,8 +24,18 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      - name: Validate
+        run: |
+          go vet ./...
+          go fmt ./...
+          git diff --exit-code
+
       - name: Run tests
-        run: go test -v -race ./...
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Publish
+        run: |
+          GOPROXY=proxy.golang.org go list -m github.com/${{ github.repository }}@${{ github.ref_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -33,3 +43,10 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+
+      - name: Notify
+        if: success()
+        run: |
+          echo "✅ Release ${{ github.ref_name }} published successfully"
+          echo "📦 Module: github.com/${{ github.repository }}"
+          echo "🔗 Release URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
