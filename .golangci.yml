@@ -1,0 +1,27 @@
+# .golangci.yml
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - revive
+    - gocritic
+    - bodyclose
+    - goconst
+    - gocyclo
+    - misspell
+    - prealloc
+    - whitespace
+
+
+issues:
+  max-same-issues: 50
+  max-issues-per-linter: 50
+
+version: '2'

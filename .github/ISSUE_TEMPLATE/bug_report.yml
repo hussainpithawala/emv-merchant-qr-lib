@@ -1,0 +1,50 @@
+name: Bug Report
+description: Something isn't working correctly
+labels: ["bug"]
+body:
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      placeholder: "e.g. go1.25.3"
+    validations:
+      required: true
+
+  - type: input
+    id: lib-version
+    attributes:
+      label: Library version
+      placeholder: "e.g. v1.0.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: raw-payload
+    attributes:
+      label: Raw QR Code payload (redact sensitive values)
+      description: The raw string that triggers the issue.
+      render: text
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Call emvqr.Decode(...)
+        2. ...
+    validations:
+      required: true
