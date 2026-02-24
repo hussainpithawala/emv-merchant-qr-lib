@@ -17,6 +17,7 @@ package bharat
 import (
 	"errors"
 	"fmt"
+	"testing"
 
 	emvqr "github.com/hussainpithawala/emv-merchant-qr-lib/emvqr"
 )
@@ -35,19 +36,17 @@ func ExampleDecode() {
 	// Build a representative Bharat QR payload and encode it first,
 	// so the Example is fully self-contained and testable.
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800202706"}, // RuPay primitive MAI
 	}
 	// UPI / NPCI template MAI
-	_ = p.AddTemplateMerchantAccount("26", "A000000677010111",
-		emvqr.DataObject{ID: "01", Value: "sharmachai@okaxis"}, // UPI VPA
-	)
+	_ = p.SetUPIVPATemplate("A000000677010111", "sharmachai@okaxis", "")
 	p.MerchantCategoryCode = "5499" // Misc Food Stores
 	p.TransactionCurrency = "356"   // INR
 	p.TransactionAmount = "75"      // ₹75
 	p.CountryCode = "IN"
 	p.MerchantName = "Sharma Chai Stall"
-	p.MerchantCity = "Mumbai"
+	p.MerchantCity = "Pune"
 
 	raw, _ := emvqr.Encode(p)
 
@@ -63,7 +62,7 @@ func ExampleDecode() {
 	fmt.Println(decoded.HasMultipleNetworks())
 	// Output:
 	// Sharma Chai Stall
-	// Mumbai
+	// Pune
 	// 356
 	// 75
 	// true
@@ -80,9 +79,9 @@ func ExampleDecode() {
 // Scenario: Krishna Kirana Store, Delhi.
 func ExampleEncode() {
 	p := emvqr.NewPayload()
-	_ = p.AddPrimitiveMerchantAccount("02", "4403847800209901") // RuPay MAI
-	p.MerchantCategoryCode = "5411"                             // Grocery Stores
-	p.TransactionCurrency = "356"                               // INR
+	_ = p.AddMerchantIdentifier("02", "4403847800209901") // RuPay MAI
+	p.MerchantCategoryCode = "5411"                       // Grocery Stores
+	p.TransactionCurrency = "356"                         // INR
 	p.CountryCode = "IN"
 	p.MerchantName = "Krishna Kirana Store"
 	p.MerchantCity = "Delhi"
@@ -115,7 +114,7 @@ func ExampleEncode() {
 // charge on every QR-initiated order.  MCC 5812 = Eating Places.
 func ExamplePayload_SetFixedConvenienceFee() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800201111"},
 	}
 	p.MerchantCategoryCode = "5812" // Eating Places, Restaurants
@@ -148,7 +147,7 @@ func ExamplePayload_SetFixedConvenienceFee() {
 // Calculation: ₹2500 × 1.80% = ₹45  →  total ₹2545.
 func ExamplePayload_SetPercentageConvenienceFee() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800203333"},
 	}
 	p.MerchantCategoryCode = "4111" // Transit / Railway
@@ -180,7 +179,7 @@ func ExamplePayload_SetPercentageConvenienceFee() {
 // to choose no tip.
 func ExamplePayload_SetPromptForTip() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800204444"},
 	}
 	p.MerchantCategoryCode = "5812" // Eating Places
@@ -209,7 +208,7 @@ func ExamplePayload_SetPromptForTip() {
 // Scenario: D-Mart supermarket — SmartBuy loyalty programme integration.
 func ExamplePayload_LoyaltyNumberRequired() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800205555"},
 	}
 	p.MerchantCategoryCode = "5411" // Grocery / Supermarket
@@ -243,7 +242,7 @@ func ExamplePayload_LoyaltyNumberRequired() {
 // consumers whose UPI app is set to Hindi.
 func ExamplePayload_PreferredMerchantName() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800206666"},
 	}
 	p.MerchantCategoryCode = "5912" // Drug Stores and Pharmacies
@@ -280,12 +279,10 @@ func ExamplePayload_HasMultipleNetworks() {
 	p := emvqr.NewPayload()
 
 	// Network 1: RuPay — primitive MAI (bank-assigned 16-char merchant ID)
-	_ = p.AddPrimitiveMerchantAccount("02", "4403847800202706")
+	_ = p.AddMerchantIdentifier("02", "4403847800202706")
 
-	// Network 2: UPI / NPCI — template MAI with NPCI AID and merchant VPA
-	_ = p.AddTemplateMerchantAccount("26", "A000000677010111",
-		emvqr.DataObject{ID: "01", Value: "sharmachai@okaxis"},
-	)
+	// Network 2: UPI / NPCI — UPI VPA Template with NPCI AID and merchant VPA
+	_ = p.SetUPIVPATemplate("A000000677010111", "sharmachai@okaxis", "")
 
 	p.MerchantCategoryCode = "5499" // Misc Food Stores
 	p.TransactionCurrency = "356"   // INR
@@ -299,13 +296,11 @@ func ExamplePayload_HasMultipleNetworks() {
 
 	fmt.Println(decoded.HasMultipleNetworks())
 	// consumer app would show "Pay via RuPay card or UPI?" choice screen
-	fmt.Println(decoded.MerchantAccountInfos[0].ID)             // RuPay primitive
-	fmt.Println(decoded.MerchantAccountInfos[1].ID)             // UPI template
-	fmt.Println(decoded.MerchantAccountInfos[1].SubField("01")) // UPI VPA
+	fmt.Println(decoded.MerchantIdentifiers[0].ID) // RuPay primitive
+	fmt.Println(decoded.GetMerchantVPA())          // UPI VPA
 	// Output:
 	// true
 	// 02
-	// 26
 	// sharmachai@okaxis
 }
 
@@ -320,7 +315,7 @@ func ExamplePayload_HasMultipleNetworks() {
 // tampered with; the consumer app should reject it and alert the user.
 func ExampleDecode_errorHandling() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
 		{ID: "02", Value: "4403847800207777"},
 	}
 	p.MerchantCategoryCode = "5541" // Service Stations / Petrol Pumps
@@ -338,4 +333,295 @@ func ExampleDecode_errorHandling() {
 	fmt.Println(errors.Is(err, emvqr.ErrCRCMismatch)) // consumer app rejects this QR
 	// Output:
 	// true
+}
+
+// ---------------------------------------------------------------------------
+// Point of Initiation Method (Tag 01)
+// ---------------------------------------------------------------------------
+
+// ExamplePayload_SetPointOfInitiationMethod_India shows a dynamic Bharat QR
+// for a food delivery platform where each order gets a unique QR code.
+//
+// Scenario: FreshFood online ordering — static QR at shop counter would be "11"
+// (static QR), but here we use "12" for dynamic QR per order.
+func ExamplePayload_SetPointOfInitiationMethod() {
+	p := emvqr.NewPayload()
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
+		{ID: "02", Value: "4403847800208888"},
+	}
+	p.MerchantCategoryCode = "5814" // Fast Food Restaurants
+	p.TransactionCurrency = "356"   // INR
+	p.TransactionAmount = "350"     // ₹350 order
+	p.CountryCode = "IN"
+	p.MerchantName = "FreshFood"
+	p.MerchantCity = "Hyderabad"
+	_ = p.SetPointOfInitiationMethod("1", "2") // "12" = QR, dynamic
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	fmt.Println(decoded.PointOfInitiationMethod)
+	// Output:
+	// 12
+}
+
+// ---------------------------------------------------------------------------
+// UPI VPA Reference with Transaction Reference (Tag 27) — Dynamic QRs
+// ---------------------------------------------------------------------------
+
+// ExamplePayload_SetUPIVPAReference_India shows a dynamic Bharat QR for an
+// e-commerce platform where the transaction reference links to the order number.
+//
+// Scenario: BookStore online checkout — assigns each order a unique tracking ID.
+// Tag 27 enables dynamic QR generation without regenerating all sub-networks.
+func ExamplePayload_SetUPIVPAReference() {
+	p := emvqr.NewPayload()
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
+		{ID: "02", Value: "4403847800209009"},
+	}
+	// UPI template (common in Bharat QR)
+	_ = p.SetUPIVPATemplate("A000000677010111", "bookstore@okhdfcbank", "")
+	p.MerchantCategoryCode = "5942" // Book Stores
+	p.TransactionCurrency = "356"   // INR
+	p.TransactionAmount = "599"     // ₹599 order total
+	p.CountryCode = "IN"
+	p.MerchantName = "BookStore Online"
+	p.MerchantCity = "Delhi"
+	_ = p.SetPointOfInitiationMethod("1", "2") // Dynamic QR
+	_ = p.SetUPIVPAReference("ORD-2024-12345", "bookstore.in/12345")
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	fmt.Println(decoded.TransactionAmount)
+	fmt.Println(decoded.GetTransactionReference())
+	// Output:
+	// 599
+	// ORD-2024-12345
+}
+
+// ---------------------------------------------------------------------------
+// Aadhaar Number Template (Tag 28)
+// ---------------------------------------------------------------------------
+
+// ExamplePayload_SetAadhaarNumber_India shows a Bharat QR for an IRDA-regulated
+// insurance company that links purchases to Aadhaar-verified customer records.
+//
+// Scenario: HealthInsure Ltd — premium payment via Aadhaar-linked Bharat QR.
+func ExamplePayload_SetAadhaarNumber() {
+	p := emvqr.NewPayload()
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{
+		{ID: "02", Value: "4403847800201010"},
+	}
+	p.MerchantCategoryCode = "6211" // Insurance Carriers
+	p.TransactionCurrency = "356"   // INR
+	p.TransactionAmount = "4999"    // ₹4999 premium
+	p.CountryCode = "IN"
+	p.MerchantName = "HealthInsure Ltd"
+	p.MerchantCity = "Chennai"
+	_ = p.SetAadhaarNumber("123456789012")
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	fmt.Println(decoded.GetAadhaarNumber())
+	fmt.Println(len(decoded.GetAadhaarNumber()) == 12)
+	// Output:
+	// 123456789012
+	// true
+}
+
+// ---------------------------------------------------------------------------
+// UPI VPA Info (Tag 26) — Typed Access
+// ---------------------------------------------------------------------------
+
+// TestUPIVPAInfoAccess demonstrates accessing the merchant's UPI
+// Virtual Payment Address using the typed getter method.
+//
+// Scenario: Street vendor — accessing merchant VPA without manually parsing SubFields.
+func TestUPIVPAInfoAccess(t *testing.T) {
+	p := emvqr.NewPayload()
+	_ = p.AddMerchantIdentifier("02", "4403847800201111")
+	_ = p.SetUPIVPATemplate("A000000677010111", "vendor@upi", "")
+	p.MerchantCategoryCode = "5499"
+	p.TransactionCurrency = "356"
+	p.CountryCode = "IN"
+	p.MerchantName = "Street Vendor"
+	p.MerchantCity = "Mumbai"
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	// Access merchant VPA using typed getter
+	fmt.Println(decoded.GetMerchantVPA())
+	fmt.Println(decoded.UPIVPAInfo != nil)
+	fmt.Println(decoded.UPIVPAInfo.VPA)
+	// Verify
+	if decoded.GetMerchantVPA() != "vendor@upi" {
+		t.Errorf("expected vendor@upi, got %s", decoded.GetMerchantVPA())
+	}
+	if decoded.UPIVPAInfo == nil {
+		t.Error("expected UPIVPAInfo to be set")
+	}
+	if decoded.UPIVPAInfo.VPA != "vendor@upi" {
+		t.Errorf("expected vendor@upi, got %s", decoded.UPIVPAInfo.VPA)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UPI VPA Info with Minimum Amount (Tag 26, SubTag 02)
+// ---------------------------------------------------------------------------
+
+// TestUPIVPAMinimumAmount shows dynamic Bharat QR where a merchant
+// specifies a minimum purchase amount for UPI transactions.
+//
+// Scenario: E-commerce platform — minimum order value ₹100 for free shipping.
+func TestUPIVPAMinimumAmount(t *testing.T) {
+	p := emvqr.NewPayload()
+	_ = p.AddMerchantIdentifier("02", "4403847800202222")
+	_ = p.SetUPIVPATemplate("A000000677010111", "shop@okhdfcbank", "100.00")
+	p.MerchantCategoryCode = "5411"
+	p.TransactionCurrency = "356"
+	p.CountryCode = "IN"
+	p.MerchantName = "ECommerce Shop"
+	p.MerchantCity = "Bangalore"
+	_ = p.SetPointOfInitiationMethod("1", "2") // Dynamic QR
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	// Verify
+	if decoded.GetMinimumAmount() != "100.00" {
+		t.Errorf("expected 100.00, got %s", decoded.GetMinimumAmount())
+	}
+	if decoded.UPIVPAInfo.MinimumAmount != "100.00" {
+		t.Errorf("expected 100.00, got %s", decoded.UPIVPAInfo.MinimumAmount)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UPI Transaction Reference with URL (Tag 27) — Typed Access
+// ---------------------------------------------------------------------------
+
+// TestUPITransactionRefWithURL demonstrates a dynamic QR that
+// links to an invoice URL along with the transaction reference.
+//
+// Scenario: SaaS platform — payment QR includes order number and invoice link.
+func TestUPITransactionRefWithURL(t *testing.T) {
+	p := emvqr.NewPayload()
+	_ = p.AddMerchantIdentifier("02", "4403847800203333")
+	_ = p.SetUPIVPATemplate("A000000677010111", "saas@upi", "")
+	p.MerchantCategoryCode = "7372" // Software Services
+	p.TransactionCurrency = "356"
+	p.TransactionAmount = "999"
+	p.CountryCode = "IN"
+	p.MerchantName = "SaaS Platform"
+	p.MerchantCity = "Pune"
+	_ = p.SetPointOfInitiationMethod("1", "2") // Dynamic QR
+	_ = p.SetUPIVPAReference("SUB-2024-98765", "platform.com/invoice/98765")
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	// Verify
+	if decoded.GetTransactionReference() != "SUB-2024-98765" {
+		t.Errorf("expected SUB-2024-98765, got %s", decoded.GetTransactionReference())
+	}
+	if decoded.UPITransactionRef.ReferenceURL != "platform.com/invoice/98765" {
+		t.Errorf("expected platform.com/invoice/98765, got %s", decoded.UPITransactionRef.ReferenceURL)
+	}
+	if decoded.UPITransactionRef == nil {
+		t.Error("expected UPITransactionRef to be set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UPI VPA Info — SubFields Access (Generic)
+// ---------------------------------------------------------------------------
+
+// TestUPIVPAInfoSubFields demonstrates accessing UPI VPA
+// template data via the generic SubFields array in MerchantIdentifiers.
+//
+// Scenario: Generic QR decoder — accessing template data through the hybrid structure.
+func TestUPIVPAInfoSubFields(t *testing.T) {
+	p := emvqr.NewPayload()
+	_ = p.AddMerchantIdentifier("02", "4403847800204444")
+	_ = p.SetUPIVPATemplate("A000000677010111", "retail@upi", "")
+	p.MerchantCategoryCode = "5411"
+	p.TransactionCurrency = "356"
+	p.CountryCode = "IN"
+	p.MerchantName = "Retail Store"
+	p.MerchantCity = "Delhi"
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	// Find UPI VPA template (ID "26") in MerchantIdentifiers
+	found := false
+	for _, mi := range decoded.MerchantIdentifiers {
+		if mi.ID == "26" {
+			found = true
+			if len(mi.SubFields) != 2 {
+				t.Errorf("expected 2 SubFields, got %d", len(mi.SubFields))
+			}
+			// SubFields should contain: RuPayRID (00) and VPA (01)
+			expectedSubTags := map[string]string{
+				"00": "A000000677010111",
+				"01": "retail@upi",
+			}
+			for _, sf := range mi.SubFields {
+				if expected, ok := expectedSubTags[sf.ID]; ok {
+					if sf.Value != expected {
+						t.Errorf("SubTag %s: expected %s, got %s", sf.ID, expected, sf.Value)
+					}
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("expected to find UPI VPA template (ID 26) in MerchantIdentifiers")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Network with UPI VPA and Transaction Reference
+// ---------------------------------------------------------------------------
+
+// TestMultiNetworkUPIDynamic shows a Bharat QR that supports
+// both RuPay (primitive) and UPI (template) with dynamic transaction reference.
+//
+// Scenario: Logistics company — dynamic QR for each shipment with order tracking.
+func TestMultiNetworkUPIDynamic(t *testing.T) {
+	p := emvqr.NewPayload()
+	_ = p.AddMerchantIdentifier("02", "4403847800205555")
+	_ = p.SetUPIVPATemplate("A000000677010111", "logistics@icici", "")
+	p.MerchantCategoryCode = "4215" // Courier Services
+	p.TransactionCurrency = "356"
+	p.TransactionAmount = "249"
+	p.CountryCode = "IN"
+	p.MerchantName = "FastShip Logistics"
+	p.MerchantCity = "Chennai"
+	_ = p.SetPointOfInitiationMethod("1", "2") // Dynamic QR
+	_ = p.SetUPIVPAReference("SHIP-2024-456789", "fastship.in/track/456789")
+
+	raw, _ := emvqr.Encode(p)
+	decoded, _ := emvqr.Decode(raw)
+
+	// Verify
+	if decoded.MerchantName != "FastShip Logistics" {
+		t.Errorf("expected FastShip Logistics, got %s", decoded.MerchantName)
+	}
+	if !decoded.HasMultipleNetworks() {
+		t.Error("expected HasMultipleNetworks to be true")
+	}
+	// Should have: 02 (RuPay primitive), 26 (UPI VPA template), 27 (UPI VPA Reference template)
+	if len(decoded.MerchantIdentifiers) != 3 {
+		t.Errorf("expected 3 MerchantIdentifiers (02, 26, 27), got %d", len(decoded.MerchantIdentifiers))
+	}
+	if decoded.GetMerchantVPA() != "logistics@icici" {
+		t.Errorf("expected logistics@icici, got %s", decoded.GetMerchantVPA())
+	}
+	if decoded.GetTransactionReference() != "SHIP-2024-456789" {
+		t.Errorf("expected SHIP-2024-456789, got %s", decoded.GetTransactionReference())
+	}
 }

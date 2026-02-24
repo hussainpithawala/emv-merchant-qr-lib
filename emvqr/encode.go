@@ -39,11 +39,20 @@ func EncodeWithOptions(p *Payload, opts EncodeOptions) (string, error) {
 	}
 	write(&sb, IDPayloadFormatIndicator, pfi)
 
-	// --- Merchant Account Informations (IDs "02"–"51") ---
-	for _, mai := range p.MerchantAccountInfos {
-		chunk, err := encodeMerchantAccountInfo(mai)
+	// --- Point of Initiation Method (ID "01") — optional (Bharat QR) ---
+	if p.PointOfInitiationMethod != "" {
+		write(&sb, IDPointOfInitiationMethod, p.PointOfInitiationMethod)
+	}
+
+	// --- Merchant Identifiers (IDs "02"–"25") ---
+	// Skip Tags 26, 27, 28 as they are encoded separately from typed fields
+	for _, mi := range p.MerchantIdentifiers {
+		if mi.ID == "26" || mi.ID == "27" || mi.ID == "28" {
+			continue // These are encoded from typed fields below
+		}
+		chunk, err := encodeTLV(mi.ID, mi.Value)
 		if err != nil {
-			return "", fmt.Errorf("emvqr: encoding MAI %s: %w", mai.ID, err)
+			return "", fmt.Errorf("emvqr: encoding merchant identifier %s: %w", mi.ID, err)
 		}
 		sb.WriteString(chunk)
 	}
@@ -86,6 +95,33 @@ func EncodeWithOptions(p *Payload, opts EncodeOptions) (string, error) {
 	// --- Postal Code (ID "61") — optional ---
 	if p.PostalCode != "" {
 		write(&sb, IDPostalCode, p.PostalCode)
+	}
+
+	// --- UPI VPA Template (ID "26") — optional (Bharat QR) ---
+	if p.UPIVPAInfo != nil {
+		chunk, err := encodeUPIVPATemplate(p.UPIVPAInfo)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: encoding UPI VPA template: %w", err)
+		}
+		sb.WriteString(chunk)
+	}
+
+	// --- UPI VPA Reference Template (ID "27") — optional (Bharat QR dynamic) ---
+	if p.UPITransactionRef != nil {
+		chunk, err := encodeUPIVPAReference(p.UPITransactionRef)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: encoding UPI VPA reference: %w", err)
+		}
+		sb.WriteString(chunk)
+	}
+
+	// --- Aadhaar Template (ID "28") — optional (Bharat QR) ---
+	if p.MerchantAadhaar != nil {
+		chunk, err := encodeAadhaarInfo(p.MerchantAadhaar)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: encoding Aadhaar info: %w", err)
+		}
+		sb.WriteString(chunk)
 	}
 
 	// --- Additional Data Field Template (ID "62") — optional ---
@@ -136,21 +172,23 @@ func write(sb *strings.Builder, id, value string) {
 	sb.WriteString(mustEncodeTLV(id, value))
 }
 
-// encodeMerchantAccountInfo encodes a single MAI entry.
-func encodeMerchantAccountInfo(mai MerchantAccountInfo) (string, error) {
-	if mai.IsTemplate() {
+// encodeMerchantIdentifier encodes a single merchant identifier entry.
+func encodeMerchantIdentifier(mi MerchantIdentifier) (string, error) {
+	// Check if it's a template (26-51) with sub-fields
+	n, _ := strconv.Atoi(mi.ID)
+	if n >= 26 && n <= 51 && len(mi.SubFields) > 0 {
 		// Build inner TLV from sub-fields
 		var inner strings.Builder
-		for _, sf := range mai.SubFields {
+		for _, sf := range mi.SubFields {
 			chunk, err := encodeTLV(sf.ID, sf.Value)
 			if err != nil {
 				return "", err
 			}
 			inner.WriteString(chunk)
 		}
-		return encodeTLV(mai.ID, inner.String())
+		return encodeTLV(mi.ID, inner.String())
 	}
-	return encodeTLV(mai.ID, mai.Value)
+	return encodeTLV(mi.ID, mi.Value)
 }
 
 // encodeAdditionalDataField encodes the Additional Data Field Template.
@@ -248,6 +286,80 @@ func encodeUnreservedTemplate(ut UnreservedTemplate) (string, error) {
 	return encodeTLV(ut.ID, inner.String())
 }
 
+// encodeUPIVPATemplate encodes the UPI VPA template (ID "26").
+func encodeUPIVPATemplate(uvt *UPIVPATemplate) (string, error) {
+	var inner strings.Builder
+	if uvt.RuPayRID != "" {
+		chunk, err := encodeTLV(MAIGloballyUniqueID, uvt.RuPayRID)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA template RuPayRID: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	if uvt.VPA != "" {
+		chunk, err := encodeTLV("01", uvt.VPA)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA template VPA: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	if uvt.MinimumAmount != "" {
+		chunk, err := encodeTLV("02", uvt.MinimumAmount)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA template minimum amount: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	return encodeTLV("26", inner.String())
+}
+
+// encodeUPIVPAReference encodes the UPI VPA Reference template (ID "27").
+func encodeUPIVPAReference(uvr *UPIVPAReference) (string, error) {
+	var inner strings.Builder
+	if uvr.RuPayRID != "" {
+		chunk, err := encodeTLV(UPIVPARefRuPayRID, uvr.RuPayRID)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA reference RuPayRID: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	if uvr.TransactionRef != "" {
+		chunk, err := encodeTLV(UPIVPARefTransactionRef, uvr.TransactionRef)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA reference transaction reference: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	if uvr.ReferenceURL != "" {
+		chunk, err := encodeTLV(UPIVPARefURL, uvr.ReferenceURL)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: UPI VPA reference URL: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	return encodeTLV(IDUPIVPAReference, inner.String())
+}
+
+// encodeAadhaarInfo encodes the Aadhaar template (ID "28").
+func encodeAadhaarInfo(ai *AadhaarInfo) (string, error) {
+	var inner strings.Builder
+	if ai.RuPayRID != "" {
+		chunk, err := encodeTLV(AadhaarRuPayRID, ai.RuPayRID)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: Aadhaar RuPayRID: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	if ai.AadhaarNumber != "" {
+		chunk, err := encodeTLV(AadhaarAadhaarNum, ai.AadhaarNumber)
+		if err != nil {
+			return "", fmt.Errorf("emvqr: Aadhaar number: %w", err)
+		}
+		inner.WriteString(chunk)
+	}
+	return encodeTLV(IDAadhaarTemplate, inner.String())
+}
+
 // validatePayload ensures required fields are present.
 func validatePayload(p *Payload) error {
 	if p == nil {
@@ -265,8 +377,8 @@ func validatePayload(p *Payload) error {
 			return fmt.Errorf("%w: %s", ErrMissingRequired, r.name)
 		}
 	}
-	if len(p.MerchantAccountInfos) == 0 {
-		return fmt.Errorf("%w: at least one MerchantAccountInfo is required", ErrMissingRequired)
+	if len(p.MerchantIdentifiers) == 0 {
+		return fmt.Errorf("%w: at least one MerchantIdentifier is required", ErrMissingRequired)
 	}
 	// Validate tip/fee consistency
 	switch p.TipOrConvenienceIndicator {
