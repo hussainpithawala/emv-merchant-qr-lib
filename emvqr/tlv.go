@@ -59,7 +59,7 @@ func mustEncodeTLV(id, value string) string {
 // Used to populate SubFields in MerchantIdentifier and other template structures.
 // Empty values are skipped as they are invalid per EMV QRCPS specification.
 func convertTLVToDataObjects(objects []tlvObject) []DataObject {
-	var result []DataObject
+	result := make([]DataObject, 0, len(objects))
 	for _, obj := range objects {
 		// Skip empty values as they are not valid per spec
 		if obj.value == "" {

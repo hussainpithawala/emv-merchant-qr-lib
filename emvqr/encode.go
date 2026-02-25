@@ -172,25 +172,6 @@ func write(sb *strings.Builder, id, value string) {
 	sb.WriteString(mustEncodeTLV(id, value))
 }
 
-// encodeMerchantIdentifier encodes a single merchant identifier entry.
-func encodeMerchantIdentifier(mi MerchantIdentifier) (string, error) {
-	// Check if it's a template (26-51) with sub-fields
-	n, _ := strconv.Atoi(mi.ID)
-	if n >= 26 && n <= 51 && len(mi.SubFields) > 0 {
-		// Build inner TLV from sub-fields
-		var inner strings.Builder
-		for _, sf := range mi.SubFields {
-			chunk, err := encodeTLV(sf.ID, sf.Value)
-			if err != nil {
-				return "", err
-			}
-			inner.WriteString(chunk)
-		}
-		return encodeTLV(mi.ID, inner.String())
-	}
-	return encodeTLV(mi.ID, mi.Value)
-}
-
 // encodeAdditionalDataField encodes the Additional Data Field Template.
 func encodeAdditionalDataField(adf *AdditionalDataField) (string, error) {
 	var inner strings.Builder

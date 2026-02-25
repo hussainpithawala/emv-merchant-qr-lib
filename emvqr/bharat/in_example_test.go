@@ -22,6 +22,13 @@ import (
 	emvqr "github.com/hussainpithawala/emv-merchant-qr-lib/emvqr"
 )
 
+const (
+	cityPune      = "Pune"
+	cityDelhi     = "Delhi"
+	cityBangalore = "Bangalore"
+	cityChennai   = "Chennai"
+)
+
 // ---------------------------------------------------------------------------
 // Decode
 // ---------------------------------------------------------------------------
@@ -46,7 +53,7 @@ func ExampleDecode() {
 	p.TransactionAmount = "75"      // ₹75
 	p.CountryCode = "IN"
 	p.MerchantName = "Sharma Chai Stall"
-	p.MerchantCity = "Pune"
+	p.MerchantCity = cityPune
 
 	raw, _ := emvqr.Encode(p)
 
@@ -84,7 +91,7 @@ func ExampleEncode() {
 	p.TransactionCurrency = "356"                         // INR
 	p.CountryCode = "IN"
 	p.MerchantName = "Krishna Kirana Store"
-	p.MerchantCity = "Delhi"
+	p.MerchantCity = cityDelhi
 
 	raw, err := emvqr.Encode(p)
 	if err != nil {
@@ -122,7 +129,7 @@ func ExamplePayload_SetFixedConvenienceFee() {
 	p.TransactionAmount = "500"     // ₹500 food bill
 	p.CountryCode = "IN"
 	p.MerchantName = "Spice Garden"
-	p.MerchantCity = "Bangalore"
+	p.MerchantCity = cityBangalore
 	p.SetFixedConvenienceFee("50") // ₹50 service charge added automatically
 
 	raw, _ := emvqr.Encode(p)
@@ -249,7 +256,7 @@ func ExamplePayload_PreferredMerchantName() {
 	p.TransactionCurrency = "356"   // INR
 	p.CountryCode = "IN"
 	p.MerchantName = "Raj Medical Store" // English — always required
-	p.MerchantCity = "Chennai"
+	p.MerchantCity = cityChennai
 	p.SetLanguageTemplate("hi", "राज मेडिकल", "") // Hindi alternate; city not localised
 
 	raw, _ := emvqr.Encode(p)

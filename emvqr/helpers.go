@@ -41,22 +41,6 @@ func (p *Payload) AddMerchantIdentifier(tagID, value string) error {
 	return nil
 }
 
-// nextTemplateMAIID returns the next available template MAI ID ("26"–"51").
-func (p *Payload) nextTemplateMAIID() string {
-	used := map[int]bool{}
-	for _, m := range p.MerchantIdentifiers {
-		if n, err := strconv.Atoi(m.ID); err == nil {
-			used[n] = true
-		}
-	}
-	for i := 26; i <= 51; i++ {
-		if !used[i] {
-			return fmt.Sprintf("%02d", i)
-		}
-	}
-	return ""
-}
-
 // SetFixedConvenienceFee configures the payload for a fixed convenience fee.
 // amount should be the fee value as a string, e.g. "10.75".
 func (p *Payload) SetFixedConvenienceFee(amount string) {

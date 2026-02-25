@@ -29,10 +29,7 @@ import (
 	"fmt"
 )
 
-// -------------------------------------------------------------------------
 // Field IDs (as defined in EMV QRCPS Merchant-Presented Mode v1.0)
-// -------------------------------------------------------------------------
-
 const (
 	IDPayloadFormatIndicator  = "00" // Payload Format Indicator
 	IDPointOfInitiationMethod = "01" // Point of Initiation Method (Bharat QR)
