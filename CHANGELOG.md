@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2025-02-25
+
 ### Added
-- BharatQR specific encoding and decoding support.
+- Bharat QR encode & decode enhancements w.r.t tags 26, 27
+- New enums exported for direct reference of the tags
+- Real world Bharat QR test scenarios with encode and decode samples
 
 ## [1.0.0] - 2024-11-01
 
@@ -34,5 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Zero external dependencies.
 - GitHub Actions CI across Go 1.25.
 
-[Unreleased]: https://github.com/hussainpithawala/emv-merchant-qr-lib/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/hussainpithawala/emv-merchant-qr-lib/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/hussainpithawala/emv-merchant-qr-lib/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/hussainpithawala/emv-merchant-qr-lib/releases/tag/v1.0.0
