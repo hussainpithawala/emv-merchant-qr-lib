@@ -55,16 +55,17 @@ func mustEncodeTLV(id, value string) string {
 	return s
 }
 
-//// encodeTemplate encodes a set of sub-objects as a template TLV.
-// func encodeTemplate(id string, subObjects []DataObject) (string, error) {
-// 	var sb strings.Builder
-// 	for _, obj := range subObjects {
-// 		chunk, err := encodeTLV(obj.ID, obj.Value)
-// 		if err != nil {
-// 			return "", err
-// 		}
-// 		sb.WriteString(chunk)
-// 	}
-// 	inner := sb.String()
-// 	return encodeTLV(id, inner)
-// }
+// convertTLVToDataObjects converts a slice of parsed tlvObject to DataObject.
+// Used to populate SubFields in MerchantIdentifier and other template structures.
+// Empty values are skipped as they are invalid per EMV QRCPS specification.
+func convertTLVToDataObjects(objects []tlvObject) []DataObject {
+	result := make([]DataObject, 0, len(objects))
+	for _, obj := range objects {
+		// Skip empty values as they are not valid per spec
+		if obj.value == "" {
+			continue
+		}
+		result = append(result, DataObject{ID: obj.id, Value: obj.value})
+	}
+	return result
+}

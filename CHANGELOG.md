@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- BharatQR specific encoding and decoding support.
+
 ## [1.0.0] - 2024-11-01
 
 ### Added

@@ -42,7 +42,7 @@ func TestCRC_Algorithm(t *testing.T) {
 
 func TestRoundTrip_BaseExample(t *testing.T) {
 	p := NewPayload()
-	p.MerchantAccountInfos = []MerchantAccountInfo{
+	p.MerchantIdentifiers = []MerchantIdentifier{
 		{ID: "02", Value: "4000123456789012"},
 	}
 	p.MerchantCategoryCode = "5251"
@@ -66,10 +66,10 @@ func TestRoundTrip_BaseExample(t *testing.T) {
 	assertEqual(t, "CountryCode", "US", decoded.CountryCode)
 	assertEqual(t, "MerchantName", "ABC Hammers", decoded.MerchantName)
 	assertEqual(t, "MerchantCity", "New York", decoded.MerchantCity)
-	if len(decoded.MerchantAccountInfos) != 1 {
-		t.Fatalf("expected 1 MAI, got %d", len(decoded.MerchantAccountInfos))
+	if len(decoded.MerchantIdentifiers) != 1 {
+		t.Fatalf("expected 1 MAI, got %d", len(decoded.MerchantIdentifiers))
 	}
-	assertEqual(t, "MAI[0].Value", "4000123456789012", decoded.MerchantAccountInfos[0].Value)
+	assertEqual(t, "MAI[0].Value", "4000123456789012", decoded.MerchantIdentifiers[0].Value)
 }
 
 func TestRoundTrip_TransactionAmount(t *testing.T) {
@@ -90,10 +90,8 @@ func TestRoundTrip_TransactionAmount(t *testing.T) {
 func TestRoundTrip_MultipleNetworks(t *testing.T) {
 	p := basePayload()
 	p.TransactionAmount = "10"
-	if err := p.AddTemplateMerchantAccount("26", "D15600000000",
-		DataObject{ID: "01", Value: "A93FO3230QDJ8F93845K"},
-	); err != nil {
-		t.Fatalf("AddTemplateMerchantAccount: %v", err)
+	if err := p.SetUPIVPATemplate("D15600000000", "A93FO3230QDJ8F93845K", ""); err != nil {
+		t.Fatalf("SetUPIVPATemplate: %v", err)
 	}
 
 	encoded, err := Encode(p)
@@ -107,13 +105,14 @@ func TestRoundTrip_MultipleNetworks(t *testing.T) {
 	if !decoded.HasMultipleNetworks() {
 		t.Error("expected HasMultipleNetworks() == true")
 	}
-	if len(decoded.MerchantAccountInfos) != 2 {
-		t.Fatalf("expected 2 MAIs, got %d", len(decoded.MerchantAccountInfos))
+	if len(decoded.MerchantIdentifiers) != 2 {
+		t.Fatalf("expected 2 MerchantIdentifiers (primitive + template), got %d", len(decoded.MerchantIdentifiers))
 	}
-	mai26 := decoded.MerchantAccountInfos[1]
-	assertEqual(t, "MAI[1].ID", "26", mai26.ID)
-	assertEqual(t, "MAI[1].GUID", "D15600000000", mai26.GloballyUniqueID())
-	assertEqual(t, "MAI[1].SubField 01", "A93FO3230QDJ8F93845K", mai26.SubField("01"))
+	if decoded.UPIVPAInfo == nil {
+		t.Fatal("expected UPIVPAInfo to be set")
+	}
+	assertEqual(t, "UPIVPAInfo.RuPayRID", "D15600000000", decoded.UPIVPAInfo.RuPayRID)
+	assertEqual(t, "UPIVPAInfo.VPA", "A93FO3230QDJ8F93845K", decoded.UPIVPAInfo.VPA)
 }
 
 func TestRoundTrip_FixedConvenienceFee(t *testing.T) {
@@ -396,7 +395,7 @@ func TestEncode_MissingRequiredFields(t *testing.T) {
 		name string
 		fn   func(*Payload)
 	}{
-		{"NoMAI", func(p *Payload) { p.MerchantAccountInfos = nil }},
+		{"NoMAI", func(p *Payload) { p.MerchantIdentifiers = nil }},
 		{"NoMCC", func(p *Payload) { p.MerchantCategoryCode = "" }},
 		{"NoCurrency", func(p *Payload) { p.TransactionCurrency = "" }},
 		{"NoCountry", func(p *Payload) { p.CountryCode = "" }},
@@ -464,34 +463,38 @@ func TestDecode_MalformedTLV(t *testing.T) {
 // Helper Method Tests
 // -------------------------------------------------------------------------
 
-func TestAddPrimitiveMerchantAccount_AutoID(t *testing.T) {
+func TestAddMerchantIdentifier_ExplicitID(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddPrimitiveMerchantAccount("", "value-a"); err != nil {
+	if err := p.AddMerchantIdentifier("02", "value-a"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := p.AddPrimitiveMerchantAccount("", "value-b"); err != nil {
+	if err := p.AddMerchantIdentifier("04", "value-b"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertEqual(t, "first MAI ID", "02", p.MerchantAccountInfos[0].ID)
-	assertEqual(t, "second MAI ID", "03", p.MerchantAccountInfos[1].ID)
+	assertEqual(t, "first MAI ID", "02", p.MerchantIdentifiers[0].ID)
+	assertEqual(t, "second MAI ID", "04", p.MerchantIdentifiers[1].ID)
 }
 
-func TestAddPrimitiveMerchantAccount_InvalidID(t *testing.T) {
+func TestAddMerchantIdentifier_InvalidID(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddPrimitiveMerchantAccount("01", "value"); err == nil {
+	if err := p.AddMerchantIdentifier("01", "value"); err == nil {
 		t.Fatal("expected error for reserved ID 01, got nil")
 	}
-	if err := p.AddPrimitiveMerchantAccount("26", "value"); err == nil {
+	if err := p.AddMerchantIdentifier("26", "value"); err == nil {
 		t.Fatal("expected error for template-range ID 26, got nil")
 	}
 }
 
-func TestAddTemplateMerchantAccount_AutoID(t *testing.T) {
+func TestSetUPIVPATemplate_Basic(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddTemplateMerchantAccount("", "GUID-001"); err != nil {
+	if err := p.SetUPIVPATemplate("GUID-001", "merchant@bank", ""); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	assertEqual(t, "first template MAI ID", "26", p.MerchantAccountInfos[0].ID)
+	if p.UPIVPAInfo == nil {
+		t.Fatalf("expected UPIVPAInfo to be set")
+	}
+	assertEqual(t, "RuPayRID", "GUID-001", p.UPIVPAInfo.RuPayRID)
+	assertEqual(t, "VPA", "merchant@bank", p.UPIVPAInfo.VPA)
 }
 
 func TestTotalAmount_NoAmount(t *testing.T) {
@@ -530,7 +533,7 @@ func TestHasMultipleNetworks_Single(t *testing.T) {
 
 func basePayload() *Payload {
 	p := NewPayload()
-	p.MerchantAccountInfos = []MerchantAccountInfo{
+	p.MerchantIdentifiers = []MerchantIdentifier{
 		{ID: "02", Value: "4000123456789012"},
 	}
 	p.MerchantCategoryCode = "5251"

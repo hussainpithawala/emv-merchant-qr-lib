@@ -78,12 +78,66 @@ func (p *Payload) applyObject(obj tlvObject) error {
 	case id == IDPayloadFormatIndicator:
 		p.PayloadFormatIndicator = val
 
-	case isMerchantAccountInfo(id):
-		mai, err := decodeMerchantAccountInfo(id, val)
+	case id == IDPointOfInitiationMethod:
+		p.PointOfInitiationMethod = val
+
+	case id == IDUPIVPATemplate:
+		uvt, err := decodeUPIVPATemplate(val)
 		if err != nil {
-			return err
+			return &ParseError{ID: id, Err: err}
 		}
-		p.MerchantAccountInfos = append(p.MerchantAccountInfos, *mai)
+		p.UPIVPAInfo = uvt
+		// Also add to MerchantIdentifiers with SubFields
+		subFields, err := parseTLV(val)
+		if err == nil {
+			mi := MerchantIdentifier{
+				ID:        id,
+				SubFields: convertTLVToDataObjects(subFields),
+			}
+			p.MerchantIdentifiers = append(p.MerchantIdentifiers, mi)
+		}
+
+	case id == IDUPIVPAReference:
+		uvr, err := decodeUPIVPAReference(val)
+		if err != nil {
+			return &ParseError{ID: id, Err: err}
+		}
+		p.UPITransactionRef = uvr
+		// Also add to MerchantIdentifiers with SubFields
+		subFields, err := parseTLV(val)
+		if err == nil {
+			mi := MerchantIdentifier{
+				ID:        id,
+				SubFields: convertTLVToDataObjects(subFields),
+			}
+			p.MerchantIdentifiers = append(p.MerchantIdentifiers, mi)
+		}
+
+	case id == IDAadhaarTemplate:
+		ai, err := decodeAadhaarInfo(val)
+		if err != nil {
+			return &ParseError{ID: id, Err: err}
+		}
+		p.MerchantAadhaar = ai
+		// Also add to MerchantIdentifiers with SubFields
+		subFields, err := parseTLV(val)
+		if err == nil {
+			mi := MerchantIdentifier{
+				ID:        id,
+				SubFields: convertTLVToDataObjects(subFields),
+			}
+			p.MerchantIdentifiers = append(p.MerchantIdentifiers, mi)
+		}
+
+	case isMerchantAccountInfo(id):
+		// Add merchant identifier for this payment network
+		// For primitives (02-25): Value contains the account info
+		// For templates (26-51): SubFields would be populated via the cases above
+		mi := MerchantIdentifier{
+			ID:    id,
+			Value: val,
+		}
+		p.MerchantIdentifiers = append(p.MerchantIdentifiers, mi)
 
 	case id == IDMerchantCategoryCode:
 		p.MerchantCategoryCode = val
@@ -163,25 +217,6 @@ func isUnreservedTemplate(id string) bool {
 	return n >= 80 && n <= 99
 }
 
-// decodeMerchantAccountInfo decodes either a primitive or template MAI entry.
-func decodeMerchantAccountInfo(id, val string) (*MerchantAccountInfo, error) {
-	n, _ := strconv.Atoi(id)
-	mai := &MerchantAccountInfo{ID: id}
-	if n >= 26 && n <= 51 {
-		// Template: parse sub-fields
-		subs, err := parseTLV(val)
-		if err != nil {
-			return nil, &ParseError{ID: id, Err: err}
-		}
-		for _, s := range subs {
-			mai.SubFields = append(mai.SubFields, DataObject{ID: s.id, Value: s.value})
-		}
-	} else {
-		mai.Value = val
-	}
-	return mai, nil
-}
-
 // decodeAdditionalDataField parses the contents of ID "62".
 func decodeAdditionalDataField(val string) (*AdditionalDataField, error) {
 	subs, err := parseTLV(val)
@@ -253,4 +288,63 @@ func decodeUnreservedTemplate(id, val string) (*UnreservedTemplate, error) {
 		}
 	}
 	return ut, nil
+}
+
+// decodeUPIVPAReference parses the UPI VPA Reference template (ID "27").
+// decodeUPIVPATemplate parses the UPI VPA template (ID "26").
+func decodeUPIVPATemplate(val string) (*UPIVPATemplate, error) {
+	subs, err := parseTLV(val)
+	if err != nil {
+		return nil, err
+	}
+	uvt := &UPIVPATemplate{}
+	for _, s := range subs {
+		switch s.id {
+		case MAIGloballyUniqueID:
+			uvt.RuPayRID = s.value
+		case "01":
+			uvt.VPA = s.value
+		case "02":
+			uvt.MinimumAmount = s.value
+		}
+	}
+	return uvt, nil
+}
+
+// decodeUPIVPAReference parses the UPI VPA Reference template (ID "27").
+func decodeUPIVPAReference(val string) (*UPIVPAReference, error) {
+	subs, err := parseTLV(val)
+	if err != nil {
+		return nil, err
+	}
+	uvr := &UPIVPAReference{}
+	for _, s := range subs {
+		switch s.id {
+		case UPIVPARefRuPayRID:
+			uvr.RuPayRID = s.value
+		case UPIVPARefTransactionRef:
+			uvr.TransactionRef = s.value
+		case UPIVPARefURL:
+			uvr.ReferenceURL = s.value
+		}
+	}
+	return uvr, nil
+}
+
+// decodeAadhaarInfo parses the Aadhaar template (ID "28").
+func decodeAadhaarInfo(val string) (*AadhaarInfo, error) {
+	subs, err := parseTLV(val)
+	if err != nil {
+		return nil, err
+	}
+	ai := &AadhaarInfo{}
+	for _, s := range subs {
+		switch s.id {
+		case AadhaarRuPayRID:
+			ai.RuPayRID = s.value
+		case AadhaarAadhaarNum:
+			ai.AadhaarNumber = s.value
+		}
+	}
+	return ai, nil
 }

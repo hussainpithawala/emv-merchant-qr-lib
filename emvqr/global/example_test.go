@@ -13,7 +13,7 @@ const merchantCity = "New York"
 // ExampleDecode shows how to parse a raw EMV QR Code string.
 func ExampleDecode() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "10"
@@ -41,7 +41,7 @@ func ExampleDecode() {
 // ExampleEncode shows how to build and encode a basic merchant QR payload.
 func ExampleEncode() {
 	p := emvqr.NewPayload()
-	_ = p.AddPrimitiveMerchantAccount("02", "4000123456789012")
+	_ = p.AddMerchantIdentifier("02", "4000123456789012")
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.CountryCode = "US"
@@ -62,7 +62,7 @@ func ExampleEncode() {
 // ExamplePayload_SetFixedConvenienceFee demonstrates a fixed convenience fee.
 func ExamplePayload_SetFixedConvenienceFee() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5812"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "50"
@@ -83,7 +83,7 @@ func ExamplePayload_SetFixedConvenienceFee() {
 // ExamplePayload_SetPercentageConvenienceFee demonstrates a percentage-based fee.
 func ExamplePayload_SetPercentageConvenienceFee() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "9311"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "3000"
@@ -104,7 +104,7 @@ func ExamplePayload_SetPercentageConvenienceFee() {
 // ExamplePayload_SetPromptForTip demonstrates the tip prompt indicator.
 func ExamplePayload_SetPromptForTip() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5812"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "50"
@@ -123,7 +123,7 @@ func ExamplePayload_SetPromptForTip() {
 // ExamplePayload_LoyaltyNumberRequired shows how to detect the loyalty-number prompt.
 func ExamplePayload_LoyaltyNumberRequired() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "10"
@@ -144,7 +144,7 @@ func ExamplePayload_LoyaltyNumberRequired() {
 // ExamplePayload_PreferredMerchantName shows language-aware name resolution.
 func ExamplePayload_PreferredMerchantName() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.CountryCode = "US"
@@ -165,10 +165,8 @@ func ExamplePayload_PreferredMerchantName() {
 // ExamplePayload_HasMultipleNetworks shows multi-network detection.
 func ExamplePayload_HasMultipleNetworks() {
 	p := emvqr.NewPayload()
-	_ = p.AddPrimitiveMerchantAccount("02", "4000123456789012")
-	_ = p.AddTemplateMerchantAccount("26", "D15600000000",
-		emvqr.DataObject{ID: "01", Value: "A93FO3230QDJ8F93845K"},
-	)
+	_ = p.AddMerchantIdentifier("02", "4000123456789012")
+	_ = p.SetUPIVPATemplate("D15600000000", "A93FO3230QDJ8F93845K", "")
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.TransactionAmount = "10"
@@ -186,7 +184,7 @@ func ExamplePayload_HasMultipleNetworks() {
 // ExampleDecode_errorHandling shows typed error inspection.
 func ExampleDecode_errorHandling() {
 	p := emvqr.NewPayload()
-	p.MerchantAccountInfos = []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}}
+	p.MerchantIdentifiers = []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}}
 	p.MerchantCategoryCode = "5251"
 	p.TransactionCurrency = "840"
 	p.CountryCode = "US"

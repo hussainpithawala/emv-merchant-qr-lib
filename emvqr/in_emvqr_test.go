@@ -2,7 +2,7 @@
 //
 // Bharat QR is India's interoperable QR payment standard, jointly developed
 // by NPCI, Visa, Mastercard, and American Express and mandated by the Reserve
-// Bank of India (RBI). It is built on the EMV QRCPS Merchant-Presented Mode
+// Bank of India (RBI & NPCI). It is built on the EMV QRCPS Merchant-Presented Mode
 // v1.0 specification, so this library encodes and decodes Bharat QR payloads
 // without modification.
 //
@@ -25,10 +25,12 @@ package emvqr
 import (
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 // ---------------------------------------------------------------------------
-// Indian payment constants (Bharat QR context)
+// Indian payment constants (NPCI's Bharat QR context)
 // ---------------------------------------------------------------------------
 
 const (
@@ -48,15 +50,18 @@ const (
 
 	// poiDynamic marks a QR code generated fresh for each transaction.
 	poiDynamic = "12"
+
+	// realWorldBharatQRPayload is a representative Bharat QR code
+	realWorldBharatQRPayload = "000201010212021645851910410448940415545080003175565061661000100317556350822SBIN000415243930804448111531090003127398626590010A0000005240141SBIPMOPAD.02PL00000644432-21503961@SBIPAY27770010A0000005240123526020914454520875696090232https://www.hitachi-payments.com28180010A00000052401005204544153033565406250.005802IN5923APRIL MOON RETAIL PRIVA6009AHMEDABAD61063800036258031502PL00000644432052352602091445452087569609070821503961630451DD"
 )
 
 // ---------------------------------------------------------------------------
 // CRC Tests
 // ---------------------------------------------------------------------------
 
-func TestCRC_KnownValue_India(t *testing.T) {
+func TestCRC_KnownValue_NPCIBhartQR(t *testing.T) {
 	// A freshly encoded payload should always pass its own CRC check.
-	encoded, err := Encode(indianBasePayload())
+	encoded, err := Encode(NPCIBhartQRBasePayload())
 	if err != nil {
 		t.Fatalf("Encode() error: %v", err)
 	}
@@ -65,7 +70,7 @@ func TestCRC_KnownValue_India(t *testing.T) {
 	}
 }
 
-func TestCRC_Algorithm_India(t *testing.T) {
+func TestCRC_Algorithm_NPCIBhartQR(t *testing.T) {
 	// Verify CRC16-CCITT produces a 4-character uppercase hex string.
 	// Input is a representative Bharat QR prefix (up to "6304").
 	input := "000201011102164403847800265204525153035565802IN5917Sharma Chai Stall6006Mumbai6304"
@@ -93,11 +98,11 @@ func TestCRC_Algorithm_India(t *testing.T) {
 const merchantName = "Sharma Chai Stall"
 const merchantCity = "Mumbai"
 
-func TestRoundTrip_BaseExample_India(t *testing.T) {
+func TestRoundTrip_BaseExample_NPCIBhartQR(t *testing.T) {
 	p := NewPayload()
 	// Point of Initiation: "11" = static QR
-	p.RFUFields = []DataObject{{ID: "01", Value: poiStatic}}
-	p.MerchantAccountInfos = []MerchantAccountInfo{
+	p.PointOfInitiationMethod = poiStatic
+	p.MerchantIdentifiers = []MerchantIdentifier{
 		{ID: "02", Value: "4403847800202706"}, // RuPay primitive MAI (16-char merchant ID)
 	}
 	p.MerchantCategoryCode = "5499" // Misc Food Stores & Convenience Stores
@@ -117,19 +122,13 @@ func TestRoundTrip_BaseExample_India(t *testing.T) {
 	}
 
 	assertEqual(t, "PayloadFormatIndicator", "01", decoded.PayloadFormatIndicator)
+	assertEqual(t, "PointOfInitiationMethod", poiStatic, decoded.PointOfInitiationMethod)
 	assertEqual(t, "TransactionCurrency", inrCurrency, decoded.TransactionCurrency)
 	assertEqual(t, "CountryCode", inCountryCode, decoded.CountryCode)
 	assertEqual(t, "MerchantName", merchantName, decoded.MerchantName)
 	assertEqual(t, "MerchantCity", merchantCity, decoded.MerchantCity)
 	assertEqual(t, "MerchantCategoryCode", "5499", decoded.MerchantCategoryCode)
 	assertEqual(t, "PostalCode", "400001", decoded.PostalCode)
-
-	// Point of Initiation (ID "01") lands in RFUFields since the library
-	// does not yet model it as a named field.
-	if len(decoded.RFUFields) == 0 {
-		t.Fatal("expected RFUFields to contain Point of Initiation (ID 01)")
-	}
-	assertEqual(t, "PoI Method (static)", poiStatic, decoded.RFUFields[0].Value)
 }
 
 // ---------------------------------------------------------------------------
@@ -141,8 +140,8 @@ func TestRoundTrip_BaseExample_India(t *testing.T) {
 // Delhi is included.
 // ---------------------------------------------------------------------------
 
-func TestRoundTrip_TransactionAmount_India(t *testing.T) {
-	p := indianBasePayload()
+func TestRoundTrip_TransactionAmount_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.RFUFields = []DataObject{{ID: "01", Value: poiDynamic}} // dynamic QR
 	p.MerchantCategoryCode = "5411"                           // Grocery Stores
 	p.TransactionAmount = "150"                               // ₹150
@@ -183,15 +182,13 @@ func TestRoundTrip_TransactionAmount_India(t *testing.T) {
 
 func TestRoundTrip_MultipleNetworks_BharatQR(t *testing.T) {
 	p := NewPayload()
-	p.MerchantAccountInfos = []MerchantAccountInfo{
+	p.MerchantIdentifiers = []MerchantIdentifier{
 		// RuPay — primitive entry (bank-assigned merchant ID)
 		{ID: "02", Value: "4403847800202706"},
 	}
-	// UPI/NPCI — template entry
-	if err := p.AddTemplateMerchantAccount("26", npciRuPayGUID,
-		DataObject{ID: "01", Value: "sharmachai@okaxis"}, // UPI VPA
-	); err != nil {
-		t.Fatalf("AddTemplateMerchantAccount: %v", err)
+	// UPI/NPCI — UPI VPA Template entry
+	if err := p.SetUPIVPATemplate(npciRuPayGUID, "sharmachai@okaxis", ""); err != nil {
+		t.Fatalf("SetUPIVPATemplate: %v", err)
 	}
 	p.MerchantCategoryCode = "5499"
 	p.TransactionCurrency = inrCurrency
@@ -212,18 +209,19 @@ func TestRoundTrip_MultipleNetworks_BharatQR(t *testing.T) {
 	if !decoded.HasMultipleNetworks() {
 		t.Error("HasMultipleNetworks() = false; expected true for Bharat QR multi-network payload")
 	}
-	if len(decoded.MerchantAccountInfos) != 2 {
-		t.Fatalf("expected 2 MAIs, got %d", len(decoded.MerchantAccountInfos))
+	if len(decoded.MerchantIdentifiers) != 2 {
+		t.Fatalf("expected 2 merchant identifiers (primitive + template), got %d", len(decoded.MerchantIdentifiers))
 	}
 
-	rupay := decoded.MerchantAccountInfos[0]
+	rupay := decoded.MerchantIdentifiers[0]
 	assertEqual(t, "RuPay MAI ID", "02", rupay.ID)
 	assertEqual(t, "RuPay merchant ID", "4403847800202706", rupay.Value)
 
-	upi := decoded.MerchantAccountInfos[1]
-	assertEqual(t, "UPI MAI ID", "26", upi.ID)
-	assertEqual(t, "NPCI GUID", npciRuPayGUID, upi.GloballyUniqueID())
-	assertEqual(t, "UPI VPA", "sharmachai@okaxis", upi.SubField("01"))
+	if decoded.UPIVPAInfo == nil {
+		t.Fatal("expected UPIVPAInfo to be set")
+	}
+	assertEqual(t, "NPCI GUID", npciRuPayGUID, decoded.UPIVPAInfo.RuPayRID)
+	assertEqual(t, "UPI VPA", "sharmachai@okaxis", decoded.UPIVPAInfo.VPA)
 }
 
 // ---------------------------------------------------------------------------
@@ -233,8 +231,8 @@ func TestRoundTrip_MultipleNetworks_BharatQR(t *testing.T) {
 // QR-initiated orders.  MCC 5812 = Eating Places, Restaurants.
 // ---------------------------------------------------------------------------
 
-func TestRoundTrip_FixedConvenienceFee_India(t *testing.T) {
-	p := indianBasePayload()
+func TestRoundTrip_FixedConvenienceFee_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "5812" // Eating Places, Restaurants
 	p.TransactionAmount = "500"     // ₹500 food bill
 	p.MerchantName = "Spice Garden"
@@ -260,7 +258,7 @@ func TestRoundTrip_FixedConvenienceFee_India(t *testing.T) {
 	}
 	// ₹500 food bill + ₹50 service charge = ₹550
 	if total != 550 {
-		t.Errorf("TotalAmount() = ₹%.2f, want ₹550.00", total)
+		t.Errorf("TotalAmount() = %.2f, want 550.00", total)
 	}
 }
 
@@ -272,8 +270,8 @@ func TestRoundTrip_FixedConvenienceFee_India(t *testing.T) {
 // The consumer is always allowed to choose no tip (per spec §3.4.2).
 // ---------------------------------------------------------------------------
 
-func TestRoundTrip_PromptForTip_India(t *testing.T) {
-	p := indianBasePayload()
+func TestRoundTrip_PromptForTip_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "5812" // Eating Places
 	p.TransactionAmount = "800"     // ₹800 thali order
 	p.MerchantName = "Punjab Da Dhaba"
@@ -312,7 +310,7 @@ func TestRoundTrip_PromptForTip_India(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoundTrip_PercentageFee_IRCTC(t *testing.T) {
-	p := indianBasePayload()
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "4111" // Transit / Railway
 	p.TransactionAmount = "2500"    // ₹2500 base ticket fare
 	p.MerchantName = "IRCTC Booking"
@@ -351,7 +349,7 @@ func TestRoundTrip_PercentageFee_IRCTC(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoundTrip_LoyaltyPrompt_DMart(t *testing.T) {
-	p := indianBasePayload()
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "5411" // Grocery / Supermarket
 	p.TransactionAmount = "1200"    // ₹1200 grocery basket
 	p.MerchantName = "D-Mart"
@@ -389,8 +387,8 @@ func TestRoundTrip_LoyaltyPrompt_DMart(t *testing.T) {
 //   Total = 70 chars ✓
 // ---------------------------------------------------------------------------
 
-func TestRoundTrip_AdditionalData_AllFields_India(t *testing.T) {
-	p := indianBasePayload()
+func TestRoundTrip_AdditionalData_AllFields_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "5411"
 	p.TransactionAmount = "940"
 	p.MerchantName = "D-Mart"
@@ -454,7 +452,7 @@ func TestRoundTrip_AdditionalData_AllFields_India(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoundTrip_AlternateLanguage_Hindi(t *testing.T) {
-	p := indianBasePayload()
+	p := NPCIBhartQRBasePayload()
 	p.MerchantCategoryCode = "5912" // Drug Stores and Pharmacies
 	p.TransactionAmount = "450"     // ₹450 medicine bill
 	p.MerchantName = "Raj Medical Store"
@@ -496,7 +494,7 @@ func TestRoundTrip_AlternateLanguage_Hindi(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestRoundTrip_UnreservedTemplate_PhonePe(t *testing.T) {
-	p := indianBasePayload()
+	p := NPCIBhartQRBasePayload()
 	p.TransactionAmount = "299"
 	p.UnreservedTemplates = []UnreservedTemplate{
 		{
@@ -532,7 +530,7 @@ func TestRoundTrip_UnreservedTemplate_PhonePe(t *testing.T) {
 // TLV Unit Tests (mechanics — locale-neutral)
 // ---------------------------------------------------------------------------
 
-func TestParseTLV_ValidInput_India(t *testing.T) {
+func TestParseTLV_ValidInput_NPCIBhartQR(t *testing.T) {
 	// "5917Sharma Chai Stall" → ID=59, len=17, value="Sharma Chai Stall"
 	objs, err := parseTLV("5917Sharma Chai Stall")
 	if err != nil {
@@ -545,7 +543,7 @@ func TestParseTLV_ValidInput_India(t *testing.T) {
 	assertEqual(t, "Value", "Sharma Chai Stall", objs[0].value)
 }
 
-func TestParseTLV_MultipleObjects_India(t *testing.T) {
+func TestParseTLV_MultipleObjects_NPCIBhartQR(t *testing.T) {
 	// Currency "356" (INR) followed by country "IN"
 	objs, err := parseTLV("5303356" + "5802IN")
 	if err != nil {
@@ -560,21 +558,21 @@ func TestParseTLV_MultipleObjects_India(t *testing.T) {
 	assertEqual(t, "obj[1].value (IN)", "IN", objs[1].value)
 }
 
-func TestParseTLV_TruncatedData_India(t *testing.T) {
+func TestParseTLV_TruncatedData_NPCIBhartQR(t *testing.T) {
 	_, err := parseTLV("5917Sharma") // declares 17 chars, only 6 present
 	if err == nil {
 		t.Fatal("expected error for truncated TLV, got nil")
 	}
 }
 
-func TestParseTLV_TooShort_India(t *testing.T) {
+func TestParseTLV_TooShort_NPCIBhartQR(t *testing.T) {
 	_, err := parseTLV("59") // fewer than 4 chars — no room for length field
 	if err == nil {
 		t.Fatal("expected error for input shorter than 4 chars, got nil")
 	}
 }
 
-func TestEncodeTLV_RoundTrip_India(t *testing.T) {
+func TestEncodeTLV_RoundTrip_NPCIBhartQR(t *testing.T) {
 	s, err := encodeTLV("59", "Sharma Chai Stall")
 	if err != nil {
 		t.Fatalf("encodeTLV error: %v", err)
@@ -588,7 +586,7 @@ func TestEncodeTLV_RoundTrip_India(t *testing.T) {
 	}
 }
 
-func TestEncodeTLV_ValueTooLong_India(t *testing.T) {
+func TestEncodeTLV_ValueTooLong_NPCIBhartQR(t *testing.T) {
 	_, err := encodeTLV("59", strings.Repeat("A", 100))
 	if err == nil {
 		t.Fatal("expected error for value > 99 chars, got nil")
@@ -599,12 +597,12 @@ func TestEncodeTLV_ValueTooLong_India(t *testing.T) {
 // Validation Tests
 // ---------------------------------------------------------------------------
 
-func TestEncode_MissingRequiredFields_India(t *testing.T) {
+func TestEncode_MissingRequiredFields_NPCIBhartQR(t *testing.T) {
 	cases := []struct {
 		name string
 		fn   func(*Payload)
 	}{
-		{"NoMAI", func(p *Payload) { p.MerchantAccountInfos = nil }},
+		{"NoMAI", func(p *Payload) { p.MerchantIdentifiers = nil }},
 		{"NoMCC", func(p *Payload) { p.MerchantCategoryCode = "" }},
 		{"NoCurrency", func(p *Payload) { p.TransactionCurrency = "" }},
 		{"NoCountry", func(p *Payload) { p.CountryCode = "" }},
@@ -613,7 +611,7 @@ func TestEncode_MissingRequiredFields_India(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			p := indianBasePayload()
+			p := NPCIBhartQRBasePayload()
 			tc.fn(p)
 			if _, err := Encode(p); err == nil {
 				t.Errorf("expected validation error for %s, got nil", tc.name)
@@ -622,22 +620,22 @@ func TestEncode_MissingRequiredFields_India(t *testing.T) {
 	}
 }
 
-func TestEncode_InvalidTipIndicator_India(t *testing.T) {
-	p := indianBasePayload()
+func TestEncode_InvalidTipIndicator_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.TipOrConvenienceIndicator = "99"
 	if _, err := Encode(p); err == nil {
 		t.Fatal("expected error for invalid tip indicator value '99', got nil")
 	}
 }
 
-func TestEncode_NilPayload_India(t *testing.T) {
+func TestEncode_NilPayload_NPCIBhartQR(t *testing.T) {
 	if _, err := Encode(nil); err == nil {
 		t.Fatal("expected error encoding nil payload, got nil")
 	}
 }
 
-func TestDecode_InvalidCRC_India(t *testing.T) {
-	encoded, err := Encode(indianBasePayload())
+func TestDecode_InvalidCRC_NPCIBhartQR(t *testing.T) {
+	encoded, err := Encode(NPCIBhartQRBasePayload())
 	if err != nil {
 		t.Fatalf("Encode() error: %v", err)
 	}
@@ -651,8 +649,8 @@ func TestDecode_InvalidCRC_India(t *testing.T) {
 	}
 }
 
-func TestDecode_SkipCRCValidation_India(t *testing.T) {
-	encoded, err := Encode(indianBasePayload())
+func TestDecode_SkipCRCValidation_NPCIBhartQR(t *testing.T) {
+	encoded, err := Encode(NPCIBhartQRBasePayload())
 	if err != nil {
 		t.Fatalf("Encode() error: %v", err)
 	}
@@ -662,7 +660,7 @@ func TestDecode_SkipCRCValidation_India(t *testing.T) {
 	}
 }
 
-func TestDecode_MalformedTLV_India(t *testing.T) {
+func TestDecode_MalformedTLV_NPCIBhartQR(t *testing.T) {
 	if _, err := DecodeWithOptions("0002", DecodeOptions{SkipCRCValidation: true}); err == nil {
 		t.Fatal("expected error for truncated TLV, got nil")
 	}
@@ -672,49 +670,50 @@ func TestDecode_MalformedTLV_India(t *testing.T) {
 // Helper Method Tests
 // ---------------------------------------------------------------------------
 
-func TestAddPrimitiveMerchantAccount_AutoID_India(t *testing.T) {
+func TestAddMerchantIdentifier_ExplicitID_NPCIBhartQR(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddPrimitiveMerchantAccount("", "4403847800202706"); err != nil {
-		t.Fatalf("first AddPrimitiveMerchantAccount error: %v", err)
+	if err := p.AddMerchantIdentifier("02", "4403847800202706"); err != nil {
+		t.Fatalf("first AddMerchantIdentifier error: %v", err)
 	}
-	if err := p.AddPrimitiveMerchantAccount("", "4403847800202999"); err != nil {
-		t.Fatalf("second AddPrimitiveMerchantAccount error: %v", err)
+	if err := p.AddMerchantIdentifier("04", "4403847800202999"); err != nil {
+		t.Fatalf("second AddMerchantIdentifier error: %v", err)
 	}
-	assertEqual(t, "first MAI auto-ID", "02", p.MerchantAccountInfos[0].ID)
-	assertEqual(t, "second MAI auto-ID", "03", p.MerchantAccountInfos[1].ID)
+	assertEqual(t, "first MAI ID", "02", p.MerchantIdentifiers[0].ID)
+	assertEqual(t, "second MAI ID", "04", p.MerchantIdentifiers[1].ID)
 }
 
-func TestAddPrimitiveMerchantAccount_InvalidID_India(t *testing.T) {
+func TestAddMerchantIdentifier_InvalidID_NPCIBhartQR(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddPrimitiveMerchantAccount("01", "value"); err == nil {
+	if err := p.AddMerchantIdentifier("01", "value"); err == nil {
 		t.Fatal("expected error for reserved ID 01 (RFU), got nil")
 	}
-	if err := p.AddPrimitiveMerchantAccount("26", "value"); err == nil {
+	if err := p.AddMerchantIdentifier("26", "value"); err == nil {
 		t.Fatal("expected error for template-range ID 26, got nil")
 	}
 }
 
-func TestAddTemplateMerchantAccount_AutoID_NPCI(t *testing.T) {
+func TestSetUPIVPATemplate_NPCI(t *testing.T) {
 	p := NewPayload()
-	if err := p.AddTemplateMerchantAccount("", npciRuPayGUID,
-		DataObject{ID: "01", Value: "testmerchant@okaxis"},
-	); err != nil {
-		t.Fatalf("AddTemplateMerchantAccount error: %v", err)
+	if err := p.SetUPIVPATemplate(npciRuPayGUID, "testmerchant@okaxis", ""); err != nil {
+		t.Fatalf("SetUPIVPATemplate error: %v", err)
 	}
-	assertEqual(t, "auto-assigned template MAI ID", "26", p.MerchantAccountInfos[0].ID)
-	assertEqual(t, "NPCI GUID sub-field", npciRuPayGUID, p.MerchantAccountInfos[0].GloballyUniqueID())
+	if p.UPIVPAInfo == nil {
+		t.Fatalf("expected UPIVPAInfo to be set")
+	}
+	assertEqual(t, "RuPayRID", npciRuPayGUID, p.UPIVPAInfo.RuPayRID)
+	assertEqual(t, "VPA", "testmerchant@okaxis", p.UPIVPAInfo.VPA)
 }
 
-func TestTotalAmount_NoAmount_India(t *testing.T) {
-	p := indianBasePayload()
+func TestTotalAmount_NoAmount_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	// TransactionAmount deliberately absent (static QR — consumer enters amount)
 	if _, err := p.TotalAmount(); err == nil {
 		t.Fatal("expected error from TotalAmount() when TransactionAmount is absent, got nil")
 	}
 }
 
-func TestTotalAmount_INR_BaseOnly_India(t *testing.T) {
-	p := indianBasePayload()
+func TestTotalAmount_INR_BaseOnly_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	p.TransactionAmount = "2499"
 	total, err := p.TotalAmount()
 	if err != nil {
@@ -725,17 +724,17 @@ func TestTotalAmount_INR_BaseOnly_India(t *testing.T) {
 	}
 }
 
-func TestPreferredMerchantName_NoTemplate_India(t *testing.T) {
-	p := indianBasePayload()
+func TestPreferredMerchantName_NoTemplate_NPCIBhartQR(t *testing.T) {
+	p := NPCIBhartQRBasePayload()
 	// Without a language template, every locale returns the primary English name
 	assertEqual(t, "name (hi)", "Sharma Chai Stall", p.PreferredMerchantName("hi"))
 	assertEqual(t, "name (ta)", "Sharma Chai Stall", p.PreferredMerchantName("ta"))
 	assertEqual(t, "name (en)", "Sharma Chai Stall", p.PreferredMerchantName("en"))
 }
 
-func TestHasMultipleNetworks_SingleRuPay_India(t *testing.T) {
+func TestHasMultipleNetworks_SingleRuPay_NPCIBhartQR(t *testing.T) {
 	// A simple RuPay-only QR code should NOT report multiple networks
-	if indianBasePayload().HasMultipleNetworks() {
+	if NPCIBhartQRBasePayload().HasMultipleNetworks() {
 		t.Error("HasMultipleNetworks() = true for single-network RuPay payload; want false")
 	}
 }
@@ -744,12 +743,12 @@ func TestHasMultipleNetworks_SingleRuPay_India(t *testing.T) {
 // Shared test helpers
 // ---------------------------------------------------------------------------
 
-// indianBasePayload returns a minimal valid Bharat QR payload representing
+// NPCIBhartQRBasePayload returns a minimal valid Bharat QR payload representing
 // Sharma Chai Stall in Mumbai — the canonical Indian "base example" used
 // throughout this test suite.
-func indianBasePayload() *Payload {
+func NPCIBhartQRBasePayload() *Payload {
 	p := NewPayload()
-	p.MerchantAccountInfos = []MerchantAccountInfo{
+	p.MerchantIdentifiers = []MerchantIdentifier{
 		// RuPay primitive MAI — 16-character bank-assigned merchant ID
 		{ID: "02", Value: "4403847800202706"},
 	}
@@ -759,4 +758,294 @@ func indianBasePayload() *Payload {
 	p.MerchantName = merchantName
 	p.MerchantCity = merchantCity
 	return p
+}
+
+// TestDecode_RealWorldBharatQRExample tests decoding of a real-world
+// Bharat QR code with complete tag coverage including Tags 26, 27, 28, and 62.
+// QR from: APRIL MOON RETAIL PRIVATE LIMITED, Ahmedabad
+func TestDecode_RealWorldBharatQRExample(t *testing.T) {
+	// Real-world Bharat QR payload with comprehensive tag support
+	decoded, err := Decode(realWorldBharatQRPayload)
+	if err != nil {
+		t.Fatalf("Decode() error: %v", err)
+	}
+
+	// =========================================================================
+	// Tag 00: Payload Format Indicator
+	// =========================================================================
+	assertEqual(t, "PayloadFormatIndicator", "01", decoded.PayloadFormatIndicator)
+
+	// =========================================================================
+	// Tag 01: Point of Initiation Method
+	// =========================================================================
+	assertEqual(t, "PointOfInitiationMethod", "12", decoded.PointOfInitiationMethod)
+
+	// =========================================================================
+	// Tag 02-11: Merchant Account Information (multiple networks)
+	// =========================================================================
+	if len(decoded.MerchantIdentifiers) != 8 {
+		t.Fatalf("expected 8 merchant identifiers (5 primitives + 3 templates), got %d", len(decoded.MerchantIdentifiers))
+	}
+
+	// MAI[0] ID 02 - Visa primitive
+	assertEqual(t, "MAI[0].ID", "02", decoded.MerchantIdentifiers[0].ID)
+	assertEqual(t, "MAI[0].Value", "4585191041044894", decoded.MerchantIdentifiers[0].Value)
+
+	// MAI[1] ID 04 - Mastercard primitive
+	assertEqual(t, "MAI[1].ID", "04", decoded.MerchantIdentifiers[1].ID)
+	assertEqual(t, "MAI[1].Value", "545080003175565", decoded.MerchantIdentifiers[1].Value)
+
+	// MAI[2] ID 06 - NPCI/RuPay merchant PAN
+	assertEqual(t, "MAI[2].ID", "06", decoded.MerchantIdentifiers[2].ID)
+	assertEqual(t, "MAI[2].Value", "6100010031755635", decoded.MerchantIdentifiers[2].Value)
+
+	// MAI[3] ID 08 - IFSC & Account
+	assertEqual(t, "MAI[3].ID", "08", decoded.MerchantIdentifiers[3].ID)
+	assertEqual(t, "MAI[3].Value", "SBIN000415243930804448", decoded.MerchantIdentifiers[3].Value)
+
+	// MAI[4] ID 11 - AmEx primitive
+	assertEqual(t, "MAI[4].ID", "11", decoded.MerchantIdentifiers[4].ID)
+	assertEqual(t, "MAI[4].Value", "310900031273986", decoded.MerchantIdentifiers[4].Value)
+
+	// =========================================================================
+	// Tag 26: UPI VPA Template
+	// =========================================================================
+	if decoded.UPIVPAInfo == nil {
+		t.Fatal("expected UPIVPAInfo to be set")
+	}
+	assertEqual(t, "UPIVPAInfo.RuPayRID", "A000000524", decoded.UPIVPAInfo.RuPayRID)
+	assertEqual(t, "UPIVPAInfo.VPA", "SBIPMOPAD.02PL00000644432-21503961@SBIPAY", decoded.UPIVPAInfo.VPA)
+	assertEqual(t, "UPIVPAInfo.MinimumAmount", "", decoded.UPIVPAInfo.MinimumAmount)
+
+	// =========================================================================
+	// Tag 27: UPI VPA Reference (Transaction Reference)
+	// =========================================================================
+	if decoded.UPITransactionRef == nil {
+		t.Fatal("expected UPITransactionRef to be set")
+	}
+	assertEqual(t, "UPITransactionRef.RuPayRID", "A000000524", decoded.UPITransactionRef.RuPayRID)
+	assertEqual(t, "UPITransactionRef.TransactionRef", "52602091445452087569609", decoded.UPITransactionRef.TransactionRef)
+	assertEqual(t, "UPITransactionRef.ReferenceURL", "https://www.hitachi-payments.com", decoded.UPITransactionRef.ReferenceURL)
+
+	// =========================================================================
+	// Tag 28: Aadhaar Number Template
+	// =========================================================================
+	if decoded.MerchantAadhaar == nil {
+		t.Fatal("expected AadhaarInfo to be set")
+	}
+	assertEqual(t, "AadhaarInfo.RuPayRID", "A000000524", decoded.MerchantAadhaar.RuPayRID)
+	assertEqual(t, "AadhaarInfo.AadhaarNumber", "", decoded.MerchantAadhaar.AadhaarNumber)
+
+	// =========================================================================
+	// Tag 52: Merchant Category Code
+	// =========================================================================
+	assertEqual(t, "MerchantCategoryCode", "5441", decoded.MerchantCategoryCode)
+
+	// =========================================================================
+	// Tag 53: Transaction Currency
+	// =========================================================================
+	assertEqual(t, "TransactionCurrency", "356", decoded.TransactionCurrency) // INR
+
+	// =========================================================================
+	// Tag 54: Transaction Amount
+	// =========================================================================
+	assertEqual(t, "TransactionAmount", "250.00", decoded.TransactionAmount)
+
+	// =========================================================================
+	// Tag 58: Country Code
+	// =========================================================================
+	assertEqual(t, "CountryCode", "IN", decoded.CountryCode)
+
+	// =========================================================================
+	// Tag 59: Merchant Name
+	// =========================================================================
+	assertEqual(t, "MerchantName", "APRIL MOON RETAIL PRIVA", decoded.MerchantName)
+
+	// =========================================================================
+	// Tag 60: Merchant City
+	// =========================================================================
+	assertEqual(t, "MerchantCity", "AHMEDABAD", decoded.MerchantCity)
+
+	// =========================================================================
+	// Tag 61: Postal Code
+	// =========================================================================
+	assertEqual(t, "PostalCode", "380003", decoded.PostalCode)
+
+	// =========================================================================
+	// Tag 62: Additional Data Field Template
+	// =========================================================================
+	if decoded.AdditionalData == nil {
+		t.Fatal("expected AdditionalData to be set")
+	}
+	assertEqual(t, "AdditionalData.BillNumber", "", decoded.AdditionalData.BillNumber)
+	assertEqual(t, "AdditionalData.MobileNumber", "", decoded.AdditionalData.MobileNumber)
+	assertEqual(t, "AdditionalData.StoreLabel", "02PL00000644432", decoded.AdditionalData.StoreLabel)
+	assertEqual(t, "AdditionalData.LoyaltyNumber", "", decoded.AdditionalData.LoyaltyNumber)
+	assertEqual(t, "AdditionalData.ReferenceLabel", "52602091445452087569609", decoded.AdditionalData.ReferenceLabel)
+	assertEqual(t, "AdditionalData.CustomerLabel", "", decoded.AdditionalData.CustomerLabel)
+	assertEqual(t, "AdditionalData.TerminalLabel", "21503961", decoded.AdditionalData.TerminalLabel)
+	assertEqual(t, "AdditionalData.PurposeOfTransaction", "", decoded.AdditionalData.PurposeOfTransaction)
+	assertEqual(t, "AdditionalData.AdditionalConsumerDataRequest", "", decoded.AdditionalData.AdditionalConsumerDataRequest)
+
+	// =========================================================================
+	// Tag 63: CRC
+	// =========================================================================
+	assertEqual(t, "CRC", "51DD", decoded.CRC)
+
+	// =========================================================================
+	// Tag 64: Language Template (not present in this QR)
+	// =========================================================================
+	if decoded.LanguageTemplate != nil {
+		t.Error("expected LanguageTemplate to be nil")
+	}
+
+	// =========================================================================
+	// Summary checks
+	// =========================================================================
+	if !decoded.HasMultipleNetworks() {
+		t.Error("expected HasMultipleNetworks() == true for multi-network payload")
+	}
+
+	// Test getter methods
+	assertEqual(t, "GetMerchantVPA()", "SBIPMOPAD.02PL00000644432-21503961@SBIPAY", decoded.GetMerchantVPA())
+	assertEqual(t, "GetTransactionReference()", "52602091445452087569609", decoded.GetTransactionReference())
+	assertEqual(t, "GetAadhaarNumber()", "", decoded.GetAadhaarNumber())
+
+	// =========================================================================
+	// Roundtrip test: encode decoded payload and verify CRC matches
+	// =========================================================================
+	encoded, err := Encode(decoded)
+	if err != nil {
+		t.Fatalf("Encode() error: %v", err)
+	}
+
+	// Re-decode to ensure roundtrip consistency
+	reTested, err := Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() roundtrip error: %v", err)
+	}
+
+	assertEqual(t, "Roundtrip.MerchantName", decoded.MerchantName, reTested.MerchantName)
+	assertEqual(t, "Roundtrip.TransactionAmount", decoded.TransactionAmount, reTested.TransactionAmount)
+	assertEqual(t, "Roundtrip.UPITransactionRef.TransactionRef", decoded.UPITransactionRef.TransactionRef, reTested.UPITransactionRef.TransactionRef)
+}
+
+// ---------------------------------------------------------------------------
+// Full Object Comparison Test — Real-World Bharat QR using cmp.Diff()
+//
+// This test validates the complete decoded Payload object structure using
+// google/go-cmp for deep comparison. Instead of individual field assertions,
+// we create an expected Payload and compare it against the decoded result,
+// catching any structural mismatches instantly.
+// ---------------------------------------------------------------------------
+
+func TestDecode_RealWorldBharatQR_ObjectComparison(t *testing.T) {
+	decoded, err := Decode(realWorldBharatQRPayload)
+	if err != nil {
+		t.Fatalf("Decode() error: %v", err)
+	}
+
+	// Build expected Payload object with all fields
+	expected := &Payload{
+		PayloadFormatIndicator:  "01",
+		PointOfInitiationMethod: "12",
+		MerchantIdentifiers: []MerchantIdentifier{
+			{ID: "02", Value: "4585191041044894"},
+			{ID: "04", Value: "545080003175565"},
+			{ID: "06", Value: "6100010031755635"},
+			{ID: "08", Value: "SBIN000415243930804448"},
+			{ID: "11", Value: "310900031273986"},
+			{ID: "26", SubFields: []DataObject{{ID: "00", Value: "A000000524"}, {ID: "01", Value: "SBIPMOPAD.02PL00000644432-21503961@SBIPAY"}}},
+			{ID: "27", SubFields: []DataObject{{ID: "00", Value: "A000000524"}, {ID: "01", Value: "52602091445452087569609"}, {ID: "02", Value: "https://www.hitachi-payments.com"}}},
+			{ID: "28", SubFields: []DataObject{{ID: "00", Value: "A000000524"}}},
+		},
+		UPIVPAInfo: &UPIVPATemplate{
+			RuPayRID:      "A000000524",
+			VPA:           "SBIPMOPAD.02PL00000644432-21503961@SBIPAY",
+			MinimumAmount: "",
+		},
+		UPITransactionRef: &UPIVPAReference{
+			RuPayRID:       "A000000524",
+			TransactionRef: "52602091445452087569609",
+			ReferenceURL:   "https://www.hitachi-payments.com",
+		},
+		MerchantAadhaar: &AadhaarInfo{
+			RuPayRID:      "A000000524",
+			AadhaarNumber: "",
+		},
+		MerchantCategoryCode: "5441",
+		TransactionCurrency:  "356",
+		TransactionAmount:    "250.00",
+		CountryCode:          "IN",
+		MerchantName:         "APRIL MOON RETAIL PRIVA",
+		MerchantCity:         "AHMEDABAD",
+		PostalCode:           "380003",
+		AdditionalData: &AdditionalDataField{
+			BillNumber:                    "",
+			MobileNumber:                  "",
+			StoreLabel:                    "02PL00000644432",
+			LoyaltyNumber:                 "",
+			ReferenceLabel:                "52602091445452087569609",
+			CustomerLabel:                 "",
+			TerminalLabel:                 "21503961",
+			PurposeOfTransaction:          "",
+			AdditionalConsumerDataRequest: "",
+		},
+		LanguageTemplate:           nil,
+		UnreservedTemplates:        nil,
+		RFUFields:                  nil,
+		TipOrConvenienceIndicator:  "",
+		ValueConvenienceFeeFixed:   "",
+		ValueConvenienceFeePercent: "",
+		CRC:                        "51DD",
+	}
+
+	// Compare full objects using cmp.Diff
+	if diff := cmp.Diff(expected, decoded); diff != "" {
+		t.Errorf("Payload object mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Roundtrip Object Comparison Test
+//
+// This test encodes the decoded payload and verifies the re-decoded result
+// matches the original decode using object comparison (excluding CRC, which
+// may differ due to field ordering in encoding).
+// ---------------------------------------------------------------------------
+
+func TestDecode_RealWorldBharatQR_RoundtripObjectComparison(t *testing.T) {
+	// First decode
+	decoded1, err := Decode(realWorldBharatQRPayload)
+	if err != nil {
+		t.Fatalf("Decode() error: %v", err)
+	}
+
+	// Encode the decoded payload
+	encoded, err := Encode(decoded1)
+	if err != nil {
+		t.Fatalf("Encode() error: %v", err)
+	}
+
+	// Second decode
+	decoded2, err := Decode(encoded)
+	if err != nil {
+		t.Fatalf("Decode() roundtrip error: %v", err)
+	}
+
+	// Compare critical fields (ignore CRC as it may differ due to field ordering)
+	// Create copies without CRC for comparison
+	decoded1Copy := *decoded1
+	decoded1Copy.CRC = ""
+	decoded2Copy := *decoded2
+	decoded2Copy.CRC = ""
+
+	if diff := cmp.Diff(&decoded1Copy, &decoded2Copy); diff != "" {
+		t.Errorf("Roundtrip object mismatch (-original +roundtrip):\n%s", diff)
+	}
+
+	// Verify CRC is valid (should not be empty, even if different)
+	if decoded2.CRC == "" {
+		t.Error("Roundtrip CRC is empty")
+	}
 }

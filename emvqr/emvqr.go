@@ -14,7 +14,7 @@
 //
 //	// Encode
 //	p := &emvqr.Payload{
-//	    MerchantAccountInfo: []emvqr.MerchantAccountInfo{{ID: "02", Value: "4000123456789012"}},
+//	    MerchantIdentifiers: []emvqr.MerchantIdentifier{{ID: "02", Value: "4000123456789012"}},
 //	    MerchantCategoryCode: "5251",
 //	    TransactionCurrency:  "840",
 //	    CountryCode:          "US",
@@ -27,64 +27,30 @@ package emvqr
 import (
 	"errors"
 	"fmt"
-	"strconv"
 )
 
-// -------------------------------------------------------------------------
 // Field IDs (as defined in EMV QRCPS Merchant-Presented Mode v1.0)
-// -------------------------------------------------------------------------
-
 const (
+	IDPayloadFormatIndicator  = "00" // Payload Format Indicator
+	IDPointOfInitiationMethod = "01" // Point of Initiation Method (Bharat QR)
 
-	// IDPayloadFormatIndicator represents the identifier for the payload format indicator, commonly set as "00".
-	IDPayloadFormatIndicator = "00"
+	IDMerchantCategoryCode       = "52" // Merchant Category Code (ISO 18245)
+	IDTransactionCurrency        = "53" // Transaction Currency (ISO 4217)
+	IDTransactionAmount          = "54" // Transaction Amount (optional)
+	IDTipOrConvenienceIndicator  = "55" // Tip or Convenience Fee Indicator
+	IDValueConvenienceFeeFixed   = "56" // Convenience Fee Fixed Amount
+	IDValueConvenienceFeePercent = "57" // Convenience Fee Percentage
 
-	// IDMerchantAccountInfoMin IDMerchantAccountInfoRangeStart–End covers primitive MAI (IDs 02–25)
-	// and template MAI (IDs 26–51). ID "01" is RFU.
-	// IDMerchantAccountInfoMin          = "02"
-	// IDMerchantAccountInfoPrimitiveMax = "25"
-	// IDMerchantAccountInfoTemplateMax  = "51"
-
-	// IDMerchantCategoryCode represents the identifier for the merchant category code, defined as "52".
-	IDMerchantCategoryCode = "52"
-	// IDTransactionCurrency represents the identifier for the transaction currency, defined as "53".
-	IDTransactionCurrency = "53"
-	// IDTransactionAmount represents the identifier for the transaction amount, defined as "54".
-	IDTransactionAmount = "54"
-
-	// IDTipOrConvenienceIndicator Tip or Convenience Indicator values
-	IDTipOrConvenienceIndicator = "55"
-
-	// IDValueConvenienceFeeFixed and IDValueConvenienceFeePercent represent the values for fixed and percentage-based convenience fees, respectively.
-	IDValueConvenienceFeeFixed = "56"
-
-	// IDValueConvenienceFeePercent represents the identifier for the percentage-based convenience fee, defined as "57".
-	IDValueConvenienceFeePercent = "57"
-
-	// IDCountryCode represents the identifier for the country code, defined as "58".
-	IDCountryCode = "58"
-
-	// IDMerchantName specifies the identifier for the merchant's name in the EMV QR code data structure.
-	IDMerchantName = "59"
-
-	// IDMerchantCity specifies the identifier for the merchant's city in the EMV QR code data structure.'
-	IDMerchantCity = "60"
-
-	// IDPostalCode specifies the identifier for the merchant's postal code in the EMV QR code data structure.'
-	IDPostalCode = "61"
-
-	// IDAdditionalDataFieldTemplate specifies the identifier for the additional data field template in the EMV QR code data structure.
-	IDAdditionalDataFieldTemplate = "62"
-
-	// IDCRC represents the constant identifier for the CRC (Cyclic Redundancy Check) field in the payload.
-	IDCRC = "63"
-
-	// IDMerchantInfoLanguageTemplate specifies the identifier for the merchant information language template in the EMV QR code data structure.
-	IDMerchantInfoLanguageTemplate = "64"
-
-	// Unreserved Template range
-	// IDUnreservedTemplateMin = "80"
-	// IDUnreservedTemplateMax = "99"
+	IDCountryCode                  = "58" // Country Code (ISO 3166-1)
+	IDMerchantName                 = "59" // Merchant Name
+	IDMerchantCity                 = "60" // Merchant City
+	IDPostalCode                   = "61" // Postal Code
+	IDAdditionalDataFieldTemplate  = "62" // Additional Data Field Template
+	IDUPIVPATemplate               = "26" // UPI VPA Template (Bharat QR)
+	IDUPIVPAReference              = "27" // UPI VPA Reference (Bharat QR dynamic)
+	IDAadhaarTemplate              = "28" // Aadhaar Number Template (Bharat QR)
+	IDCRC                          = "63" // CRC16-CCITT Checksum
+	IDMerchantInfoLanguageTemplate = "64" // Merchant Information Language Template
 )
 
 // Tip or Convenience Indicator values
@@ -92,6 +58,37 @@ const (
 	TipIndicatorPromptConsumer      = "01" // consumer prompted to enter tip
 	TipIndicatorFixedConvenienceFee = "02" // fixed convenience fee
 	TipIndicatorPercentageFee       = "03" // percentage-based convenience fee
+)
+
+// Payload Format Indicator value (EMV QRCPS version)
+const (
+	PayloadFormatIndicatorValue = "01" // Current EMV QRCPS version
+)
+
+// Point of Initiation Method (Tag 01) values - Format: <Method><DataType>
+const (
+	// POI Method component values
+	POIMethodQR  = "1" // QR code based initiation
+	POIMethodBLE = "2" // Bluetooth Low Energy initiation
+	POIMethodNFC = "3" // Near Field Communication initiation
+
+	// POI Data type component values
+	POIDataTypeStatic  = "1" // Static QR code (reusable)
+	POIDataTypeDynamic = "2" // Dynamic QR code (per-transaction)
+
+	// Common POI combined values
+	POIStaticQR   = "11" // Static QR code
+	POIDynamicQR  = "12" // Dynamic QR code
+	POIStaticBLE  = "21" // Static BLE
+	POIDynamicBLE = "22" // Dynamic BLE
+	POIStaticNFC  = "31" // Static NFC
+	POIDynamicNFC = "32" // Dynamic NFC
+)
+
+// RuPay Application Provider Identifier (AID) constants
+const (
+	RuPayRIDValue       = "A000000524"       // RuPay Registered Application Provider Identifier
+	NPCIUPIAIDIndicator = "A000000677010111" // NPCI/RuPay UPI Indicator
 )
 
 // Sub-field IDs for Additional Data Field Template (ID "62")
@@ -119,6 +116,19 @@ const (
 	MAIGloballyUniqueID = "00"
 )
 
+// Sub-field IDs for UPI VPA Reference (ID "27")
+const (
+	UPIVPARefRuPayRID       = "00"
+	UPIVPARefTransactionRef = "01"
+	UPIVPARefURL            = "02"
+)
+
+// Sub-field IDs for Aadhaar Template (ID "28")
+const (
+	AadhaarRuPayRID   = "00"
+	AadhaarAadhaarNum = "01"
+)
+
 // PromptValue is the sentinel value used in Additional Data Fields to signal
 // that the consumer QR application should prompt the consumer for input.
 const PromptValue = "***"
@@ -127,49 +137,14 @@ const PromptValue = "***"
 // Data structures
 // -------------------------------------------------------------------------
 
-// MerchantAccountInfo represents a Merchant Account Information field.
-// For primitive entries (IDs "02"–"25") SubFields is nil and Value holds
-// the raw account string. For template entries (IDs "26"–"51") SubFields
-// holds the nested TLV data objects and Value is empty.
-type MerchantAccountInfo struct {
-	// ID is the two-digit field identifier, e.g. "02" or "26".
-	ID string
-
-	// Value is the raw value for primitive entries.
-	Value string
-
-	// SubFields holds decoded sub-data-objects for template entries.
-	SubFields []DataObject
-}
-
-// GloballyUniqueID returns the Globally Unique ID sub-field value for
-// template Merchant Account Information objects, or an empty string if absent.
-func (m *MerchantAccountInfo) GloballyUniqueID() string {
-	for _, f := range m.SubFields {
-		if f.ID == MAIGloballyUniqueID {
-			return f.Value
-		}
-	}
-	return ""
-}
-
-// SubField returns the value of a sub-field by ID, or empty string if absent.
-func (m *MerchantAccountInfo) SubField(id string) string {
-	for _, f := range m.SubFields {
-		if f.ID == id {
-			return f.Value
-		}
-	}
-	return ""
-}
-
-// IsTemplate reports whether this MAI uses template encoding (IDs "26"–"51").
-func (m *MerchantAccountInfo) IsTemplate() bool {
-	n, err := strconv.Atoi(m.ID)
-	if err != nil {
-		return false
-	}
-	return n >= 26 && n <= 51
+// MerchantIdentifier represents a merchant account information identifier (IDs "02"–"51").
+// Per EMV QRCPS v1.0, at least one merchant identifier is mandatory, and each tag ID can appear at most once.
+// Primitive identifiers (IDs 02-25) hold payment network account values; template identifiers (IDs 26-51)
+// contain nested TLV structures (SubFields) for advanced networks like UPI VPA (26), UPI VPA Reference (27), and Aadhaar (28).
+type MerchantIdentifier struct {
+	ID        string       // Two-digit field identifier (02-51)
+	Value     string       // Account value for primitives (IDs 02-25); empty for templates (IDs 26-51)
+	SubFields []DataObject // Nested TLV data for template entries (IDs 26-51); nil for primitives
 }
 
 // AdditionalDataField holds the parsed contents of the Additional Data Field
@@ -208,6 +183,29 @@ type UnreservedTemplate struct {
 	SubFields        []DataObject
 }
 
+// UPIVPATemplate holds the parsed contents of the UPI VPA template
+// (ID "26"), used for merchant VPA in Bharat QRs (both static and dynamic).
+type UPIVPATemplate struct {
+	RuPayRID      string // Sub-tag 00: "A000000524" (RuPay RID, mandatory)
+	VPA           string // Sub-tag 01: Merchant's UPI VPA (e.g., "merchant@bank")
+	MinimumAmount string // Sub-tag 02: Minimum amount for dynamic QRs (optional)
+}
+
+// UPIVPAReference holds the parsed contents of the UPI VPA Reference template
+// (ID "27"), used for dynamic Bharat QRs with transaction-specific references.
+type UPIVPAReference struct {
+	RuPayRID       string // Sub-tag 00: "A000000524"
+	TransactionRef string // Sub-tag 01: min 4, max 35 digits/alphanumeric (order number, booking ID, bill ID, etc.)
+	ReferenceURL   string // Sub-tag 02: optional, max 26 chars
+}
+
+// AadhaarInfo holds the parsed contents of the Aadhaar Number Template
+// (ID "28"), used for Aadhaar-linked Bharat QRs.
+type AadhaarInfo struct {
+	RuPayRID      string // Sub-tag 00: "A000000524"
+	AadhaarNumber string // Sub-tag 01: 12 digits
+}
+
 // DataObject is a generic TLV data object used for unknown or nested fields.
 type DataObject struct {
 	ID    string
@@ -219,8 +217,15 @@ type Payload struct {
 	// PayloadFormatIndicator is always "01" for the current version.
 	PayloadFormatIndicator string
 
-	// MerchantAccountInfos contains all MAI entries (IDs "02"–"51").
-	MerchantAccountInfos []MerchantAccountInfo
+	// PointOfInitiationMethod (ID "01", Bharat QR) indicates how the QR was initiated.
+	// Format: "XY" where X is method (1=QR, 2=BLE, 3=NFC), Y is data type (1=static, 2=dynamic).
+	PointOfInitiationMethod string
+
+	// MerchantIdentifiers contains merchant identifiers for supported payment networks (IDs "02"–"25").
+	// Per EMV QRCPS spec, at least one merchant identifier is mandatory.
+	// Multiple identifiers allowed (e.g., both Visa and Mastercard, or RuPay and Bank Account).
+	// Each tag ID (02-25) can appear at most once.
+	MerchantIdentifiers []MerchantIdentifier
 
 	MerchantCategoryCode string
 	TransactionCurrency  string // ISO 4217 numeric code, e.g. "840"
@@ -238,6 +243,19 @@ type Payload struct {
 
 	AdditionalData   *AdditionalDataField
 	LanguageTemplate *LanguageTemplate
+
+	// UPIVPAInfo (ID "26", Bharat QR) holds merchant UPI Virtual Payment Address information.
+	// Extracted from MerchantIdentifiers[tag="26"] for convenient typed access.
+	UPIVPAInfo *UPIVPATemplate
+
+	// UPITransactionRef (ID "27", Bharat QR) holds transaction-specific reference for dynamic UPI QRs.
+	// Used to link QR to order number, booking ID, bill ID, etc.
+	// Extracted from MerchantIdentifiers[tag="27"] for convenient typed access.
+	UPITransactionRef *UPIVPAReference
+
+	// MerchantAadhaar (ID "28", Bharat QR) holds Aadhaar-linked merchant authentication information.
+	// Extracted from MerchantIdentifiers[tag="28"] for convenient typed access.
+	MerchantAadhaar *AadhaarInfo
 
 	UnreservedTemplates []UnreservedTemplate
 

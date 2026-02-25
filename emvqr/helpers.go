@@ -17,78 +17,28 @@ func NewPayload() *Payload {
 	}
 }
 
-// AddPrimitiveMerchantAccount adds a primitive Merchant Account Information
-// entry (IDs "02"–"25"). ID "01" is reserved/RFU and is rejected.
-//
-// The first free ID starting from "02" is used if id is empty.
-func (p *Payload) AddPrimitiveMerchantAccount(id, value string) error {
-	if id == "" {
-		id = p.nextPrimitiveMAIID()
+// AddMerchantIdentifier adds a merchant identifier for a payment network (IDs "02"–"25").
+// Multiple networks can be supported (e.g., Visa, Mastercard, RuPay, Bank Account).
+// Each tag ID can appear at most once per QR code.
+func (p *Payload) AddMerchantIdentifier(tagID, value string) error {
+	if tagID == "" {
+		return fmt.Errorf("emvqr: merchant identifier tag ID cannot be empty")
 	}
-	n, err := strconv.Atoi(id)
+	n, err := strconv.Atoi(tagID)
 	if err != nil || n < 2 || n > 25 {
-		return fmt.Errorf("emvqr: primitive MAI ID must be 02–25, got %q", id)
+		return fmt.Errorf("emvqr: merchant identifier tag ID must be 02–25, got %q", tagID)
 	}
-	p.MerchantAccountInfos = append(p.MerchantAccountInfos, MerchantAccountInfo{
-		ID:    id,
+	// Check for duplicate tag ID
+	for _, mi := range p.MerchantIdentifiers {
+		if mi.ID == tagID {
+			return fmt.Errorf("emvqr: merchant identifier tag ID %s already exists", tagID)
+		}
+	}
+	p.MerchantIdentifiers = append(p.MerchantIdentifiers, MerchantIdentifier{
+		ID:    tagID,
 		Value: value,
 	})
 	return nil
-}
-
-// AddTemplateMerchantAccount adds a template Merchant Account Information
-// entry (IDs "26"–"51") with the given globally unique ID and optional
-// additional sub-fields.
-func (p *Payload) AddTemplateMerchantAccount(id, globallyUniqueID string, extra ...DataObject) error {
-	if id == "" {
-		id = p.nextTemplateMAIID()
-	}
-	n, err := strconv.Atoi(id)
-	if err != nil || n < 26 || n > 51 {
-		return fmt.Errorf("emvqr: template MAI ID must be 26–51, got %q", id)
-	}
-	subFields := make([]DataObject, 0, 1+len(extra))
-	subFields = append(subFields, DataObject{ID: MAIGloballyUniqueID, Value: globallyUniqueID})
-	for _, item := range extra {
-		subFields = append(subFields, DataObject{ID: item.ID, Value: item.Value})
-	}
-	p.MerchantAccountInfos = append(p.MerchantAccountInfos, MerchantAccountInfo{
-		ID:        id,
-		SubFields: subFields,
-	})
-	return nil
-}
-
-// nextPrimitiveMAIID returns the next available primitive MAI ID ("02"–"25").
-func (p *Payload) nextPrimitiveMAIID() string {
-	used := map[int]bool{}
-	for _, m := range p.MerchantAccountInfos {
-		if n, err := strconv.Atoi(m.ID); err == nil {
-			used[n] = true
-		}
-	}
-	for i := 2; i <= 25; i++ {
-		if !used[i] {
-			return fmt.Sprintf("%02d", i)
-		}
-	}
-	return ""
-}
-
-// nextTemplateMAIID returns the next available template MAI ID ("26"–"51").
-func (p *Payload) nextTemplateMAIID() string {
-	used := map[int]bool{}
-	for _, m := range p.MerchantAccountInfos {
-		if n, err := strconv.Atoi(m.ID); err == nil {
-			used[n] = true
-		}
-	}
-	for i := 26; i <= 51; i++ {
-		if !used[i] {
-			return fmt.Sprintf("%02d", i)
-		}
-	}
-	return ""
 }
 
 // SetFixedConvenienceFee configures the payload for a fixed convenience fee.
@@ -206,8 +156,129 @@ func (p *Payload) PreferredMerchantCity(lang string) string {
 	return p.MerchantCity
 }
 
-// HasMultipleNetworks reports whether the payload contains more than one
-// Merchant Account Information entry, indicating multi-network support.
+// HasMultipleNetworks reports whether the payload contains multiple payment networks.
+// Per EMV QRCPS spec, merchant identifiers include:
+//   - Primitive (IDs 02-25): Visa, Mastercard, RuPay, Bank Account, AmEx, etc. (multiple allowed)
+//   - Template (IDs 26-51): UPI VPA (Tag 26), and future network templates
+//
+// Multiple networks = more than one merchant identifier in the slice.
 func (p *Payload) HasMultipleNetworks() bool {
-	return len(p.MerchantAccountInfos) > 1
+	return len(p.MerchantIdentifiers) > 1
+}
+
+// -------------------------------------------------------------------------
+// Bharat QR specific helpers (Tags 01, 27, 28)
+// -------------------------------------------------------------------------
+
+// SetPointOfInitiationMethod sets the Point of Initiation Method (Tag 01, Bharat QR).
+// method: "1"=QR, "2"=BLE, "3"=NFC
+// dataType: "1"=static, "2"=dynamic
+// Combined as "XY", e.g. "11" for static QR, "12" for dynamic QR.
+func (p *Payload) SetPointOfInitiationMethod(method, dataType string) error {
+	if method == "" || dataType == "" {
+		return fmt.Errorf("emvqr: method and dataType must not be empty")
+	}
+	if method != "1" && method != "2" && method != "3" {
+		return fmt.Errorf("emvqr: method must be 1 (QR), 2 (BLE), or 3 (NFC), got %q", method)
+	}
+	if dataType != "1" && dataType != "2" {
+		return fmt.Errorf("emvqr: dataType must be 1 (static) or 2 (dynamic), got %q", dataType)
+	}
+	p.PointOfInitiationMethod = method + dataType
+	return nil
+}
+
+// SetUPIVPATemplate sets the UPI VPA Template (Tag 26, Bharat QR).
+// ruPayRID: typically "A000000524" (RuPay RID)
+// vpa: merchant's UPI VPA address (e.g., "merchant@bank")
+// minimumAmount: optional minimum amount for dynamic QRs
+func (p *Payload) SetUPIVPATemplate(ruPayRID, vpa, minimumAmount string) error {
+	if vpa == "" {
+		return fmt.Errorf("emvqr: VPA must not be empty")
+	}
+	p.UPIVPAInfo = &UPIVPATemplate{
+		RuPayRID:      ruPayRID,
+		VPA:           vpa,
+		MinimumAmount: minimumAmount,
+	}
+	return nil
+}
+
+// SetUPIVPAReference sets the UPI VPA Reference template (Tag 27, Bharat QR dynamic).
+// transactionRef: 4-35 character transaction reference (order number, booking ID, bill ID, etc.)
+// url: optional reference URL (max 26 chars)
+func (p *Payload) SetUPIVPAReference(transactionRef, url string) error {
+	if transactionRef == "" {
+		return fmt.Errorf("emvqr: transaction reference must not be empty")
+	}
+	if len(transactionRef) < 4 || len(transactionRef) > 35 {
+		return fmt.Errorf("emvqr: transaction reference must be 4-35 characters, got %d", len(transactionRef))
+	}
+	if url != "" && len(url) > 26 {
+		return fmt.Errorf("emvqr: reference URL must be max 26 characters, got %d", len(url))
+	}
+	p.UPITransactionRef = &UPIVPAReference{
+		RuPayRID:       RuPayRIDValue,
+		TransactionRef: transactionRef,
+		ReferenceURL:   url,
+	}
+	return nil
+}
+
+// SetAadhaarNumber sets the Aadhaar template (Tag 28, Bharat QR).
+// aadhaarNum: 12-digit Aadhaar number.
+func (p *Payload) SetAadhaarNumber(aadhaarNum string) error {
+	if aadhaarNum == "" {
+		return fmt.Errorf("emvqr: Aadhaar number must not be empty")
+	}
+	if len(aadhaarNum) != 12 {
+		return fmt.Errorf("emvqr: Aadhaar number must be exactly 12 digits, got %d", len(aadhaarNum))
+	}
+	// Validate that it contains only digits
+	for _, ch := range aadhaarNum {
+		if ch < '0' || ch > '9' {
+			return fmt.Errorf("emvqr: Aadhaar number must contain only digits, got %q", aadhaarNum)
+		}
+	}
+	p.MerchantAadhaar = &AadhaarInfo{
+		RuPayRID:      RuPayRIDValue,
+		AadhaarNumber: aadhaarNum,
+	}
+	return nil
+}
+
+// GetMerchantVPA returns the merchant VPA from Tag 26 (UPI VPA Template),
+// or an empty string if not present.
+func (p *Payload) GetMerchantVPA() string {
+	if p.UPIVPAInfo != nil {
+		return p.UPIVPAInfo.VPA
+	}
+	return ""
+}
+
+// GetMinimumAmount returns the minimum amount from Tag 26 (UPI VPA Template),
+// or an empty string if not present.
+func (p *Payload) GetMinimumAmount() string {
+	if p.UPIVPAInfo != nil {
+		return p.UPIVPAInfo.MinimumAmount
+	}
+	return ""
+}
+
+// GetTransactionReference returns the transaction reference from Tag 27 (UPI VPA Reference),
+// or an empty string if not present.
+func (p *Payload) GetTransactionReference() string {
+	if p.UPITransactionRef != nil {
+		return p.UPITransactionRef.TransactionRef
+	}
+	return ""
+}
+
+// GetAadhaarNumber returns the Aadhaar number from Tag 28,
+// or an empty string if not present.
+func (p *Payload) GetAadhaarNumber() string {
+	if p.MerchantAadhaar != nil {
+		return p.MerchantAadhaar.AadhaarNumber
+	}
+	return ""
 }
